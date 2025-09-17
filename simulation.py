@@ -1,5 +1,6 @@
 import jax.numpy as jnp
 import jax
+from flax import nnx
 from cell import Cell
 from models import ReactModel, SplitModel
 from indexing import masks_to_indices
@@ -79,8 +80,10 @@ def recombine(
 
 @partial(jax.jit, static_argnames=("max_num_cells",))
 def simulation_step(
-    cells: Cell, react_model: ReactModel, split_model: SplitModel, max_num_cells: int
+    cells: Cell, model_def: nnx.GraphDef, model_state: nnx.State, max_num_cells: int
 ) -> Cell:
+    react_model, split_model = nnx.merge(model_def, model_state)
+
     cells = diffuse(cells)
     cells = react(cells, react_model)
     parents, daughters_a, daughters_b, keep_parents, keep_daughters = split(
@@ -94,18 +97,22 @@ def simulation_step(
         keep_daughters,
         max_num_cells,
     )
-    return cells
+    return cells, nnx.state((react_model, split_model))
 
 
 @partial(jax.jit, static_argnames=("num_iterations",))
 def simulate(
-    cells: Cell, react_model: ReactModel, split_model: SplitModel, num_iterations: int
+    cells: Cell, model_def: nnx.GraphDef, model_state: nnx.State, num_iterations: int
 ) -> Cell:
     num_cells = len(cells.parent)
 
-    def step(cells, _):
-        cells = simulation_step(cells, react_model, split_model, num_cells)
-        return cells, cells
+    def step(carry, _):
+        cells, model_state = carry
+        cells, model_state = simulation_step(cells, model_def, model_state, num_cells)
+        return (cells, model_state), cells
 
-    _, all_cells = jax.lax.scan(step, cells, length=num_iterations)
-    return all_cells
+    carry = (cells, model_state)
+    carry, all_cells = jax.lax.scan(step, carry, length=num_iterations)
+    _, model_state = carry
+
+    return all_cells, model_state
