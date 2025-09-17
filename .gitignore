@@ -1,0 +1,16 @@
+*.sw[pmno]
+*.pyc
+*.egg-info
+*.dat
+*.lock
+*.so
+*_wrapper.cpp
+*_wrapper.c
+.coverage
+build
+dist
+.vscode
+docs/_build/
+
+# remove me to enforce synchrony across development environments
+uv.lock
