@@ -47,17 +47,23 @@ def train_step(
     optimizer,
     opt_state,
 ):
-    def loss_fn(model_params):
+    def loss_fn(learnable_params):
+        model_params, initial_cell_states = learnable_params
         m = nnx.merge(model_def, model_state, model_params)
         m_state = nnx.state(m)
-        return simulation_loss(cells, model_def, m_state, max_num_cells, num_timesteps)
+        c = cells.replace(state=initial_cell_states)
+        return simulation_loss(c, model_def, m_state, max_num_cells, num_timesteps)
 
-    loss, grad = jax.value_and_grad(loss_fn)(model_params)
+    loss, grad = jax.value_and_grad(loss_fn)((model_params, cells.state))
 
-    updates, opt_state = optimizer.update(grad, opt_state, model_params)
-    model_params = optax.apply_updates(model_params, updates)
+    updates, opt_state = optimizer.update(grad, opt_state, (model_params, cells.state))
+    model_params, initial_cell_states = optax.apply_updates(
+        (model_params, cells.state), updates
+    )
 
-    return loss, model_params
+    cells = cells.replace(state=initial_cell_states)
+
+    return loss, model_params, cells
 
 
 if __name__ == "__main__":
@@ -82,12 +88,15 @@ if __name__ == "__main__":
         (react_model, split_model), nnx.Param, ...
     )
 
+    # we want to optimize both the model params and the inital cell state
+    learnable_params = (model_params, cells.state)
+
     optimizer = optax.adamw(learning_rate=1e-4)
-    opt_state = optimizer.init(model_params)
+    opt_state = optimizer.init(learnable_params)
 
     iteration_range = tqdm(range(num_iterations))
     for i in iteration_range:
-        loss, model_params = train_step(
+        loss, model_params, cells = train_step(
             cells,
             model_def,
             model_state,
