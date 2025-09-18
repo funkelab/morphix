@@ -3,6 +3,7 @@
 # dependencies = [
 #     "jax",
 #     "flax",
+#     "optax",
 #     "tqdm",
 # ]
 # ///
@@ -16,6 +17,7 @@ from tqdm import tqdm
 from utils import print_cells
 import jax
 import jax.numpy as jnp
+import optax
 
 
 def simulation_loss(
@@ -34,7 +36,7 @@ def simulation_loss(
     return trajectory_loss(trajectory)
 
 
-@partial(jax.jit, static_argnames=("max_num_cells", "num_timesteps", "learning_rate"))
+@partial(jax.jit, static_argnames=("max_num_cells", "num_timesteps", "optimizer"))
 def train_step(
     cells,
     model_def,
@@ -42,7 +44,8 @@ def train_step(
     model_params,
     max_num_cells,
     num_timesteps,
-    learning_rate,
+    optimizer,
+    opt_state,
 ):
     def loss_fn(model_params):
         m = nnx.merge(model_def, model_state, model_params)
@@ -51,8 +54,8 @@ def train_step(
 
     loss, grad = jax.value_and_grad(loss_fn)(model_params)
 
-    # we minimize
-    model_params = jax.tree.map(lambda x, g: x - learning_rate * g, model_params, grad)
+    updates, opt_state = optimizer.update(grad, opt_state, model_params)
+    model_params = optax.apply_updates(model_params, updates)
 
     return loss, model_params
 
@@ -61,7 +64,7 @@ if __name__ == "__main__":
     max_num_cells = 8
     cell_state_dims = 32
     num_timesteps = 100
-    num_iterations = 1_000_000
+    num_iterations = 100_000
 
     cells = Cell(
         position=jnp.zeros((max_num_cells, 3)),
@@ -79,6 +82,9 @@ if __name__ == "__main__":
         (react_model, split_model), nnx.Param, ...
     )
 
+    optimizer = optax.adamw(learning_rate=1e-4)
+    opt_state = optimizer.init(model_params)
+
     iteration_range = tqdm(range(num_iterations))
     for i in iteration_range:
         loss, model_params = train_step(
@@ -88,7 +94,8 @@ if __name__ == "__main__":
             model_params,
             max_num_cells,
             num_timesteps,
-            learning_rate=1e-4,
+            optimizer,
+            opt_state,
         )
         iteration_range.set_description(f"{loss=}")
         if i % 1000 == 0:
