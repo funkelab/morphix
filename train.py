@@ -59,13 +59,13 @@ def train_step(
 
 if __name__ == "__main__":
     max_num_cells = 8
-    cell_state_dims = 4
+    cell_state_dims = 32
     num_timesteps = 100
-    num_iterations = 100_000
+    num_iterations = 1_000_000
 
     cells = Cell(
         position=jnp.zeros((max_num_cells, 3)),
-        state=jnp.zeros((max_num_cells, cell_state_dims)),
+        state=nnx.Rngs(1912).uniform((max_num_cells, cell_state_dims)),
         # initially, only one cell is active
         parent=(-jnp.ones((max_num_cells,), dtype=jnp.int16)).at[0].set(0),
         p_split=jnp.ones((max_num_cells,)),
@@ -97,7 +97,7 @@ if __name__ == "__main__":
     # print a few iterations:
     model = nnx.merge(model_def, model_state, model_params)
     model_state = nnx.state(model)
-    for t in range(4):
+    for t in range(10):
         print(f"{t=}:")
         print_cells(cells)
         cells, model_state = simulation_step(

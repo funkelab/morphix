@@ -3,19 +3,23 @@ import jax.numpy as jnp
 from cell import Cell
 
 
-def reward(cells: Cell):
+def reward(cells: Cell, t):
     """Compute the reward of a cell state at a given point in time."""
 
     # placeholder: reward as few cells as possible
     num_active = (cells.parent >= 0).sum()
 
+    # one cell for t = 0, 1; then two cells
+    target = 1 + (t > 2)
+
     # reward is +1 for one cell, -1 otherwise
-    return -1 + 2 * (num_active == 1)
+    return -1 + 2 * (num_active == target)
 
 
 def trajectory_reward(cells: Cell):
     """Compute the reward of an entire trajectory."""
-    return jax.vmap(reward)(cells).mean()
+    num_timesteps = cells.state.shape[0]
+    return jax.vmap(reward)(cells, jnp.arange(num_timesteps)).mean()
 
 
 def trajectory_loss(cells: Cell):
