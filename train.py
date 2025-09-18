@@ -94,6 +94,16 @@ if __name__ == "__main__":
     optimizer = optax.adamw(learning_rate=1e-4)
     opt_state = optimizer.init(learnable_params)
 
+    # print a few iterations (new variables to avoid overwriting the inital
+    # state)
+    model = nnx.merge(model_def, model_state, model_params)
+    m = nnx.state(model)
+    c = cells
+    for t in range(10):
+        print(f"{t=}:")
+        print_cells(c)
+        c, m = simulation_step(c, model_def, m, max_num_cells)
+
     iteration_range = tqdm(range(num_iterations))
     for i in iteration_range:
         loss, model_params, cells = train_step(
