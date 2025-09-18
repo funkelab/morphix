@@ -46,7 +46,9 @@ def split(cells: Cell, split_model: SplitModel) -> Cell:
     parents = cells.replace(p_split=split_probs, split=do_split)
 
     # split all parents (regardless of do_split)
-    daughters_a, daughters_b = jax.vmap(split_cell)(parents, jnp.arange(num_cells))
+    daughters_a, daughters_b = jax.vmap(split_cell)(
+        parents, jnp.arange(num_cells, dtype=jnp.int16)
+    )
 
     keep_parents = (~do_split) & active
     keep_daughters = do_split & active
@@ -100,9 +102,9 @@ def simulation_step(
     return cells, nnx.state((react_model, split_model))
 
 
-@partial(jax.jit, static_argnames=("num_iterations",))
+@partial(jax.jit, static_argnames=("num_timesteps",))
 def simulate(
-    cells: Cell, model_def: nnx.GraphDef, model_state: nnx.State, num_iterations: int
+    cells: Cell, model_def: nnx.GraphDef, model_state: nnx.State, num_timesteps: int
 ) -> Cell:
     num_cells = len(cells.parent)
 
@@ -112,7 +114,7 @@ def simulate(
         return (cells, model_state), cells
 
     carry = (cells, model_state)
-    carry, all_cells = jax.lax.scan(step, carry, length=num_iterations)
+    carry, all_cells = jax.lax.scan(step, carry, length=num_timesteps)
     _, model_state = carry
 
     return all_cells, model_state

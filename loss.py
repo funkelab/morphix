@@ -1,4 +1,5 @@
 import jax
+import jax.numpy as jnp
 from cell import Cell
 
 
@@ -17,10 +18,11 @@ def trajectory_reward(cells: Cell):
     return jax.vmap(reward)(cells).mean()
 
 
-def compute_loss(cells: Cell):
+def trajectory_loss(cells: Cell):
     reward = trajectory_reward(cells)
 
-    # get log prob of each performed action
+    # p_action: (t, n)
+    p_action = cells.p_split * cells.split + (1.0 - cells.p_split) * (1 - cells.split)
+    log_p_action = jnp.log(p_action).sum()
 
-    # (t, n)
-    cells.p_split
+    return -log_p_action * reward

@@ -41,21 +41,21 @@ if __name__ == "__main__":
         )
 
     # benchmark many more iterations
-    num_iterations = 10_000
+    num_timesteps = 10_000
     start = time.time()
-    for t in range(num_iterations):
+    for t in range(num_timesteps):
         cells, model_state = simulation_step(
             cells, model_def, model_state, max_num_cells
         )
     total = time.time() - start
     print(
-        f"{num_iterations} timesteps in {total:.3f}s ({total / num_iterations:.5f}s per iteration)"
+        f"{num_timesteps} timesteps in {total:.3f}s ({total / num_timesteps:.5f}s per iteration)"
     )
 
     # same with simulate function
     start = time.time()
-    all_cells, model_state = simulate(cells, model_def, model_state, num_iterations)
+    all_cells, model_state = simulate(cells, model_def, model_state, num_timesteps)
     total = time.time() - start
     print(
-        f"{num_iterations} timesteps in {total:.3f}s ({total / num_iterations:.5f}s per iteration)"
+        f"{num_timesteps} timesteps in {total:.3f}s ({total / num_timesteps:.5f}s per iteration)"
     )
