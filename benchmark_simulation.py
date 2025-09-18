@@ -16,7 +16,8 @@ from simulation import simulate, simulation_step
 
 if __name__ == "__main__":
     max_num_cells = 8
-    cell_state_dims = 4
+    cell_state_dims = 32
+    num_timesteps = 10_000
 
     cells = Cell(
         position=jnp.zeros((max_num_cells, 3)),
@@ -41,21 +42,30 @@ if __name__ == "__main__":
         )
 
     # benchmark many more iterations
-    num_timesteps = 10_000
     start = time.time()
     for t in range(num_timesteps):
         cells, model_state = simulation_step(
             cells, model_def, model_state, max_num_cells
         )
+    cells.p_split.block_until_ready()
     total = time.time() - start
     print(
-        f"{num_timesteps} timesteps in {total:.3f}s ({total / num_timesteps:.5f}s per iteration)"
+        f"{num_timesteps} timesteps in {total:.3f}s "
+        f"({total / num_timesteps * 1000**2:.3f}μs "
+        "per iteration)"
     )
 
     # same with simulate function
     start = time.time()
     all_cells, model_state = simulate(cells, model_def, model_state, num_timesteps)
+    all_cells.p_split.block_until_ready()
+    print(f"first run (including compilation): {time.time() - start:.3f}s")
+    start = time.time()
+    all_cells, model_state = simulate(cells, model_def, model_state, num_timesteps)
+    all_cells.p_split.block_until_ready()
     total = time.time() - start
     print(
-        f"{num_timesteps} timesteps in {total:.3f}s ({total / num_timesteps:.5f}s per iteration)"
+        f"{num_timesteps} timesteps in {total:.3f}s "
+        f"({total / num_timesteps * 1000**2:.3f}μs "
+        "per iteration)"
     )
