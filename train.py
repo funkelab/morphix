@@ -64,14 +64,14 @@ if __name__ == "__main__":
     max_num_cells = 8
     cell_state_dims = 32
     num_timesteps = 100
-    num_iterations = 100_000
+    num_iterations = 10_000
 
     cells = Cell(
         position=jnp.zeros((max_num_cells, 3)),
         state=nnx.Rngs(1912).uniform((max_num_cells, cell_state_dims)),
         # initially, only one cell is active
         parent=(-jnp.ones((max_num_cells,), dtype=jnp.int16)).at[0].set(0),
-        p_split=jnp.ones((max_num_cells,)),
+        p_split=jnp.ones((max_num_cells,)) * 1e-4,
         split=jnp.zeros((max_num_cells,), dtype=jnp.bool),
     )
 

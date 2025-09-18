@@ -12,21 +12,27 @@ def reward(cells: Cell, t):
     # one cell for t = 0, 1; then two cells
     target = 1 + (t > 2)
 
-    # reward is +1 for one cell, -1 otherwise
-    return -1 + 2 * (num_active == target)
+    # reward is negative deviation from target
+    return -jnp.abs(num_active - target)
 
 
-def trajectory_reward(cells: Cell):
-    """Compute the reward of an entire trajectory."""
+def trajectory_rewards(cells: Cell):
+    """Compute the rewards of each timestep of an entire trajectory."""
     num_timesteps = cells.state.shape[0]
-    return jax.vmap(reward)(cells, jnp.arange(num_timesteps)).mean()
+    return jax.vmap(reward)(cells, jnp.arange(num_timesteps))
 
 
 def trajectory_loss(cells: Cell):
-    reward = trajectory_reward(cells)
+    rewards = trajectory_rewards(cells)
 
+    # compute log probabilities of each action taken
     # p_action: (t, n)
     p_action = cells.p_split * cells.split + (1.0 - cells.p_split) * (1 - cells.split)
-    log_p_action = jnp.log(p_action).sum()
+    # log_p_action: (t,)
+    log_p_action = jnp.log(p_action).sum(axis=1)
 
-    return -log_p_action * reward
+    # compute "reward-to-go" for each timestep, i.e., sum of future rewards
+    # rewards_to_go: (t,)
+    rewards_to_go = jnp.cumsum(rewards[::-1])[::-1]
+
+    return -(log_p_action * rewards_to_go).sum()
