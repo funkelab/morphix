@@ -34,7 +34,7 @@ if __name__ == "__main__":
     model_def, model_state = nnx.split((react_model, split_model))
 
     # print a few iterations:
-    for t in range(4):
+    for t in range(10):
         print(f"{t=}:")
         print_cells(cells)
         cells, model_state = simulation_step(
