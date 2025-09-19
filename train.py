@@ -69,8 +69,10 @@ def train_step(
 if __name__ == "__main__":
     max_num_cells = 8
     cell_state_dims = 32
-    num_timesteps = 100
-    num_iterations = 10_000
+    num_timesteps = 20
+    num_iterations = 100_000
+    learning_rate = 1e-6
+    exploration_eps = 0.1
 
     cells = Cell(
         position=jnp.zeros((max_num_cells, 3)),
@@ -83,7 +85,9 @@ if __name__ == "__main__":
 
     rngs = nnx.Rngs(params=0, dropout=1, split_probs=3)
     react_model = ReactModel(cell_state_dims, cell_state_dims * 2, rngs=rngs)
-    split_model = SplitModel(cell_state_dims, cell_state_dims * 2, rngs=rngs)
+    split_model = SplitModel(
+        cell_state_dims, cell_state_dims * 2, eps=exploration_eps, rngs=rngs
+    )
     model_def, model_params, model_state = nnx.split(
         (react_model, split_model), nnx.Param, ...
     )
@@ -91,7 +95,7 @@ if __name__ == "__main__":
     # we want to optimize both the model params and the inital cell state
     learnable_params = (model_params, cells.state)
 
-    optimizer = optax.adamw(learning_rate=1e-4)
+    optimizer = optax.adamw(learning_rate=learning_rate)
     opt_state = optimizer.init(learnable_params)
 
     # print a few iterations (new variables to avoid overwriting the inital
@@ -103,6 +107,9 @@ if __name__ == "__main__":
         print(f"{t=}:")
         print_cells(c)
         c, m = simulation_step(c, model_def, m, max_num_cells)
+
+    print(f"Initial model state {model_state}")
+    print(f"Initial model params {model_params}")
 
     iteration_range = tqdm(range(num_iterations))
     for i in iteration_range:
@@ -121,8 +128,12 @@ if __name__ == "__main__":
             print(f"iteration {i}: loss {loss}")
 
     # print a few iterations:
+    split_model = SplitModel(cell_state_dims, cell_state_dims * 2, rngs=rngs)
+    model_def, _, model_state = nnx.split((react_model, split_model), nnx.Param, ...)
     model = nnx.merge(model_def, model_state, model_params)
     model_state = nnx.state(model)
+    print(f"Final model state {model_state}")
+    print(f"Final model params {model_params}")
     for t in range(10):
         print(f"{t=}:")
         print_cells(cells)
