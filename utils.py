@@ -1,4 +1,5 @@
 import jax
+import jax.numpy as jnp
 from cell import Cell
 
 
@@ -13,18 +14,20 @@ def step_function(x, threshold):
 def print_cells(cells: Cell):
     dims = len(cells.parent.shape)
 
-    def print_callback(cell):
-        if cell.parent >= 0:
-            print(
-                f"Cell at {cell.position}, p_split {cell.p_split}, split {cell.split}, parent {cell.parent}"
-            )
-        else:
-            print("<empty>")
+    with jnp.printoptions(precision=3, threshold=5, suppress=True):
 
-    if dims == 0:
-        jax.debug.callback(print_callback, cells)
-    else:
-        num_cells = len(cells.parent)
-        jax.vmap(print_cells)(jax.tree.map(lambda a: a[:10], cells))
-        if num_cells > 10:
-            jax.debug.print("(and {} more)", num_cells - 10)
+        def print_callback(cell):
+            if cell.parent >= 0:
+                print(
+                    f"Cell {cell.state}, p_split {cell.p_split:.3f}, split {cell.split}, parent {cell.parent}"
+                )
+            else:
+                print("<empty>")
+
+        if dims == 0:
+            jax.debug.callback(print_callback, cells)
+        else:
+            num_cells = len(cells.parent)
+            jax.vmap(print_cells)(jax.tree.map(lambda a: a[:10], cells))
+            if num_cells > 10:
+                jax.debug.print("(and {} more)", num_cells - 10)
