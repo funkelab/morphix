@@ -49,10 +49,7 @@ def split_and_recombine(cells: Cell, max_num_cells: int) -> Cell:
     daughters_a, daughters_b = jax.vmap(split_cell)(cells)
 
     # figure out which cells to keep
-    keep_parents = (~cells.split) & active
-    keep_daughters = cells.split & active
-
-    indices = masks_to_indices(keep_parents, keep_daughters, max_num_cells)
+    indices = masks_to_indices(active, cells.split, max_num_cells)
 
     # recombine
     return jax.tree.map(

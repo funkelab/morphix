@@ -6,18 +6,17 @@
 # ///
 import jax
 import jax.numpy as jnp
-import time
 
 
 def masks_to_indices(
-    keep_parents: jax.Array, keep_daughters: jax.Array, max_num_cells: int
+    active: jax.Array, split: jax.Array, max_num_cells: int
 ) -> jax.Array:
     """Compute an index array from two binary masks.
 
     Each mask contains n elements that mark cells:
 
-        keep_parents:   those cells migrate (and should be kept as they are)
-        keep_daughters: those cells split (two daughter cells replace each)
+        active: those cells are part of the simulation
+        split:  those cells split (two daughter cells replace each)
 
     This is to be used on an array(-like pytree) of 3n cells with the following
     layout:
@@ -35,15 +34,17 @@ def masks_to_indices(
         next_cells = intermediate_cells[indices]
 
     such that all migrating cells are kept and new daughter cells occopy the
-    free slots (which are neither in keep_parents nor keep_daughters).
+    free slots (which are not active).
     """
+
+    keep_daughters = split & active
 
     # following example for simple masks:
     #
-    # keep_parents   = [1, 1, 0, 1, 0, 0, 0, 0]
+    # active         = [1, 1, 1, 1, 1, 0, 0, 0]
+    # split          = [0, 0, 1, 0, 1, 0, 1, 0]
     # keep_daughters = [0, 0, 1, 0, 1, 0, 0, 0]
 
-    active = keep_parents | keep_daughters
     extended_mask = jnp.concatenate(
         (
             jnp.where(keep_daughters, 3, 0) + jnp.where(active, 0, 2),
@@ -60,7 +61,7 @@ def masks_to_indices(
     #
     # (* = 3, which means that this cell won't be used later)
 
-    indices = jnp.argsort(extended_mask)[:max_num_cells]
+    indices = jnp.argsort(extended_mask)
 
     # indices = [
     #   0, 1, 3,    # parents to keep
@@ -70,59 +71,4 @@ def masks_to_indices(
     #   ...         # all other indices (will be truncated later)
     # ]
 
-    return indices
-
-
-if __name__ == "__main__":
-    keep_parents = jnp.array([1, 1, 0, 1, 0, 0, 0, 0])
-    keep_daughters = jnp.array([0, 0, 1, 0, 1, 0, 0, 0])
-    num_cells = len(keep_parents)
-    masks_to_indices = jax.jit(masks_to_indices, static_argnames=("max_num_cells",))
-    indices = masks_to_indices(keep_parents, keep_daughters, num_cells)
-
-    num_iterations = 10_000
-    start = time.time()
-    for i in range(num_iterations):
-        indices = masks_to_indices(keep_parents, keep_daughters, num_cells)
-    print(f"{(time.time() - start) / num_iterations:.7f}s")
-
-    print(f"{keep_parents=}")
-    print(f"{keep_daughters=}")
-    print(f"{keep_daughters + (jnp.logical_not(keep_daughters | keep_parents)) * 2}")
-    print(f"{indices=}")
-
-    intermediate_cells = jnp.array(
-        [
-            # parents
-            0,
-            1,
-            2,
-            3,
-            4,
-            5,
-            6,
-            7,
-            # daughters a
-            10,
-            11,
-            12,
-            13,
-            14,
-            15,
-            16,
-            17,
-            # daughters b
-            20,
-            21,
-            22,
-            23,
-            24,
-            25,
-            26,
-            27,
-        ]
-    )
-
-    cells = intermediate_cells[indices][:num_cells]
-
-    print(f"{cells=}")
+    return indices[:max_num_cells]
