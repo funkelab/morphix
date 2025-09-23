@@ -2,7 +2,7 @@ import jax.numpy as jnp
 import jax
 from flax import nnx
 from cell import Cell
-from models import ReactModel, SplitModel
+from models import ReactModel, SplitModel, Model
 from indexing import masks_to_indices
 from functools import partial
 
@@ -17,7 +17,7 @@ def react(cells: Cell, react_model: ReactModel, split_model: SplitModel) -> Cell
     state = react_model(cells.state)
 
     # ask split model for split probabilities
-    split_probs = split_model(cells.state)
+    split_probs = split_model(state)
 
     # sample an action (split or not)
     split = split_model.sample(split_probs)
@@ -34,7 +34,7 @@ def split_cell(cell: Cell):
     return (daughter_a, daughter_b)
 
 
-def split_and_recombine(cells: Cell, max_num_cells: int) -> Cell:
+def split_and_recombine(cells: Cell) -> Cell:
     # total number of cells (including inactive)
     num_cells = len(cells.parent)
 
@@ -49,7 +49,7 @@ def split_and_recombine(cells: Cell, max_num_cells: int) -> Cell:
     daughters_a, daughters_b = jax.vmap(split_cell)(cells)
 
     # figure out which cells to keep
-    indices = masks_to_indices(active, cells.split, max_num_cells)
+    indices = masks_to_indices(active, cells.split, num_cells)
 
     # recombine
     return jax.tree.map(
@@ -60,38 +60,58 @@ def split_and_recombine(cells: Cell, max_num_cells: int) -> Cell:
     )
 
 
-@partial(jax.jit, static_argnames=("max_num_cells",))
+@partial(jax.jit)
 def simulation_step(
-    cells: Cell, model_def: nnx.GraphDef, model_state: nnx.State, max_num_cells: int
+    cells: Cell,
+    # TODO: pass model here?
+    model_def: nnx.GraphDef,
+    params: nnx.Param,
+    state: nnx.State,
 ) -> Cell:
-    # reassemble models
-    react_model, split_model = nnx.merge(model_def, model_state)
+    # reassemble model
+    model = Model.create(model_def, params, state)
 
     # perform split (as indicated from previous timestep)
-    cells = split_and_recombine(cells, max_num_cells)
+    cells = split_and_recombine(cells)
 
     # interact with the environment
     cells = diffuse(cells)
 
     # update the cells internally
-    cells = react(cells, react_model, split_model)
+    cells = react(cells, model.react_model, model.split_model)
 
-    return cells, nnx.state((react_model, split_model))
+    # get current model state
+    _, _, state = model.split()
+
+    return cells, state
 
 
 @partial(jax.jit, static_argnames=("num_timesteps",))
 def simulate(
-    cells: Cell, model_def: nnx.GraphDef, model_state: nnx.State, num_timesteps: int
+    # TODO: pass model here?
+    model_def: nnx.GraphDef,
+    params: nnx.Param,
+    state: nnx.State,
+    num_timesteps: int,
 ) -> Cell:
-    num_cells = len(cells.parent)
+    # reassemble model
+    model = Model.create(model_def, params, state)
+
+    # create initial cells from current model and params
+    initial_cells = model.initialize_cells()
 
     def step(carry, _):
-        cells, model_state = carry
-        cells, model_state = simulation_step(cells, model_def, model_state, num_cells)
-        return (cells, model_state), cells
+        cells, state = carry
+        cells, state = simulation_step(cells, model_def, params, state)
+        return (cells, state), cells
 
-    carry = (cells, model_state)
-    carry, all_cells = jax.lax.scan(step, carry, length=num_timesteps)
-    _, model_state = carry
+    carry = (initial_cells, state)
+    _, trajectory = jax.lax.scan(step, carry, length=num_timesteps - 1)
 
-    return all_cells, model_state
+    # prepend initial cells to trajectory
+    def prepend(a, i):
+        return jnp.insert(a, 0, i, axis=0)
+
+    trajectory = jax.tree.map(prepend, trajectory, initial_cells)
+
+    return trajectory
