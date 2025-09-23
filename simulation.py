@@ -1,8 +1,8 @@
 import jax.numpy as jnp
 import jax
-from flax import nnx
+import equinox as eqx
 from cell import Cell
-from models import ReactModel, SplitModel, Model
+from models import ReactModel, SplitModel
 from indexing import masks_to_indices
 from functools import partial
 
@@ -12,18 +12,23 @@ def diffuse(cells: Cell) -> Cell:
     return cells
 
 
-def react(cells: Cell, react_model: ReactModel, split_model: SplitModel) -> Cell:
+def react(cells: Cell, react_model: ReactModel, split_model: SplitModel, key) -> Cell:
+    key1, key2 = jax.random.split(key)
+
     # update cell state
-    state = react_model(cells.state)
+    state = jax.vmap(react_model)(cells.state)
 
     # ask split model for split probabilities
-    split_probs = split_model(state)
+    keys = jax.random.split(key1, cells.state.shape[0])
+    p_split = jax.vmap(split_model)(state, keys)
 
     # sample an action (split or not)
-    split = split_model.sample(split_probs)
+    split = split_model.sample(p_split, key2)
 
     # update cells
-    return cells.replace(state=state, p_split=split_probs, split=split)
+    return eqx.tree_at(
+        lambda c: (c.state, c.p_split, c.split), cells, (state, p_split, split)
+    )
 
 
 def split_cell(cell: Cell):
@@ -43,7 +48,7 @@ def split_and_recombine(cells: Cell) -> Cell:
     active = cells.parent >= 0
     indices = jnp.arange(num_cells, dtype=jnp.int16)
     parent_indices = indices * active - (1 - active)
-    cells = cells.replace(parent=parent_indices)
+    cells = eqx.tree_at(lambda c: c.parent, cells, parent_indices)
 
     # split all cells
     daughters_a, daughters_b = jax.vmap(split_cell)(cells)
@@ -60,17 +65,8 @@ def split_and_recombine(cells: Cell) -> Cell:
     )
 
 
-@partial(jax.jit)
-def simulation_step(
-    cells: Cell,
-    # TODO: pass model here?
-    model_def: nnx.GraphDef,
-    params: nnx.Param,
-    state: nnx.State,
-) -> Cell:
-    # reassemble model
-    model = Model.create(model_def, params, state)
-
+@partial(jax.jit, static_argnames=("static",))
+def simulation_step(cells: Cell, params: eqx.Module, static: eqx.Module, key) -> Cell:
     # perform split (as indicated from previous timestep)
     cells = split_and_recombine(cells)
 
@@ -78,35 +74,32 @@ def simulation_step(
     cells = diffuse(cells)
 
     # update the cells internally
-    cells = react(cells, model.react_model, model.split_model)
+    model = eqx.combine(params, static)
+    cells = react(cells, model.react_model, model.split_model, key)
 
-    # get current model state
-    _, _, state = model.split()
-
-    return cells, state
+    return cells
 
 
-@partial(jax.jit, static_argnames=("num_timesteps",))
-def simulate(
-    # TODO: pass model here?
-    model_def: nnx.GraphDef,
-    params: nnx.Param,
-    state: nnx.State,
-    num_timesteps: int,
-) -> Cell:
-    # reassemble model
-    model = Model.create(model_def, params, state)
+@partial(
+    jax.jit,
+    static_argnames=(
+        "static",
+        "num_timesteps",
+    ),
+)
+def simulate(params: eqx.Module, static: eqx.Module, num_timesteps: int, key) -> Cell:
+    key1, key2 = jax.random.split(key, 2)
 
     # create initial cells from current model and params
-    initial_cells = model.initialize_cells()
+    model = eqx.combine(params, static)
+    initial_cells = model.initialize_cells(key1)
 
-    def step(carry, _):
-        cells, state = carry
-        cells, state = simulation_step(cells, model_def, params, state)
-        return (cells, state), cells
+    def step(cells, key):
+        cells = simulation_step(cells, params, static, key)
+        return cells, cells
 
-    carry = (initial_cells, state)
-    _, trajectory = jax.lax.scan(step, carry, length=num_timesteps - 1)
+    keys = jax.random.split(key2, num_timesteps - 1)
+    _, trajectory = jax.lax.scan(step, initial_cells, keys)
 
     # prepend initial cells to trajectory
     def prepend(a, i):

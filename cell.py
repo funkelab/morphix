@@ -1,9 +1,8 @@
 import jax
-from flax import struct
+import equinox as eqx
 
 
-@struct.dataclass
-class Cell:
+class Cell(eqx.Module):
     position: jax.Array
     state: jax.Array
     parent: jax.Array  # -1 if not active, otherwise index into previous state
