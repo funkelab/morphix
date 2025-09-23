@@ -34,11 +34,10 @@ def train_step(params, static, num_timesteps, optimizer, opt_state, key):
 
     loss, grad = jax.value_and_grad(loss_fn)(params, static, key)
 
-    # TODO: return opt_state, we are not reusing it!
     updates, opt_state = optimizer.update(grad, opt_state, params)
     params = optax.apply_updates(params, updates)
 
-    return loss, params
+    return loss, params, opt_state
 
 
 def create_model(max_num_cells, cell_state_dims, exploration_eps, key):
@@ -94,7 +93,7 @@ if __name__ == "__main__":
         for i in iteration_range:
             # run_simulation(params, static, num_timesteps, simulation_key)
             subkey, key = jax.random.split(key, 2)
-            loss, params = train_step(
+            loss, params, opt_state = train_step(
                 params,
                 static,
                 num_timesteps,
