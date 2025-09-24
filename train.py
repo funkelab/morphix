@@ -63,10 +63,10 @@ def run_simulation(params, static, num_timesteps, key):
 
 
 if __name__ == "__main__":
-    max_num_cells = 2
+    max_num_cells = 4
     cell_state_dims = 64
     num_timesteps = 8
-    num_iterations = 10_000
+    num_iterations = 100_000
     learning_rate = 1e-4
     exploration_eps = 0.0
 
