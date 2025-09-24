@@ -65,8 +65,8 @@ def split_and_recombine(cells: Cell) -> Cell:
     )
 
 
-@partial(jax.jit, static_argnames=("static",))
-def simulation_step(cells: Cell, params: eqx.Module, static: eqx.Module, key) -> Cell:
+@partial(eqx.filter_jit)
+def simulation_step(cells: Cell, model: eqx.Module, key) -> Cell:
     # perform split (as indicated from previous timestep)
     cells = split_and_recombine(cells)
 
@@ -74,28 +74,20 @@ def simulation_step(cells: Cell, params: eqx.Module, static: eqx.Module, key) ->
     cells = diffuse(cells)
 
     # update the cells internally
-    model = eqx.combine(params, static)
     cells = react(cells, model.react_model, model.split_model, key)
 
     return cells
 
 
-@partial(
-    jax.jit,
-    static_argnames=(
-        "static",
-        "num_timesteps",
-    ),
-)
-def simulate(params: eqx.Module, static: eqx.Module, num_timesteps: int, key) -> Cell:
+@partial(eqx.filter_jit)
+def simulate(model: eqx.Module, num_timesteps: int, key) -> Cell:
     key1, key2 = jax.random.split(key, 2)
 
-    # create initial cells from current model and params
-    model = eqx.combine(params, static)
+    # create initial cells from current model
     initial_cells = model.initialize_cells(key1)
 
     def step(cells, key):
-        cells = simulation_step(cells, params, static, key)
+        cells = simulation_step(cells, model, key)
         return cells, cells
 
     keys = jax.random.split(key2, num_timesteps - 1)

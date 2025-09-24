@@ -10,17 +10,17 @@
 from models import ReactModel, SplitModel, Model
 from simulation import simulate, simulation_step
 from loss import trajectory_loss
-from functools import partial
 from tqdm import tqdm
 from utils import print_cells
+from functools import partial
 import equinox as eqx
 import jax
 import optax
 
 
-def simulation_loss(params, static, num_timesteps: int, key) -> float:
+def simulation_loss(model, num_timesteps: int, key) -> float:
     # run the simulation
-    trajectory = simulate(params, static, num_timesteps, key)
+    trajectory = simulate(model, num_timesteps, key)
 
     # compute the loss
     return trajectory_loss(trajectory)
@@ -29,10 +29,12 @@ def simulation_loss(params, static, num_timesteps: int, key) -> float:
 @partial(jax.jit, static_argnames=("static", "num_timesteps", "optimizer"))
 def train_step(params, static, num_timesteps, optimizer, opt_state, key):
     @partial(jax.jit, static_argnames=("static",))
+    @jax.value_and_grad
     def loss_fn(params, static, key):
-        return simulation_loss(params, static, num_timesteps, key)
+        model = eqx.combine(params, static)
+        return simulation_loss(model, num_timesteps, key)
 
-    loss, grad = jax.value_and_grad(loss_fn)(params, static, key)
+    loss, grad = loss_fn(params, static, key)
 
     updates, opt_state = optimizer.update(grad, opt_state, params)
     params = optax.apply_updates(params, updates)
@@ -50,7 +52,7 @@ def create_model(max_num_cells, cell_state_dims, exploration_eps, key):
     return model
 
 
-def run_simulation(params, static, num_timesteps, key):
+def run_simulation(model, num_timesteps, key):
     subkey, key = jax.random.split(key, 2)
     cells = model.initialize_cells(subkey)
     print()
@@ -59,7 +61,7 @@ def run_simulation(params, static, num_timesteps, key):
         print(f"{t=}:")
         print_cells(cells)
         subkey, key = jax.random.split(key, 2)
-        cells = simulation_step(cells, params, static, subkey)
+        cells = simulation_step(cells, model, subkey)
 
 
 if __name__ == "__main__":
@@ -86,12 +88,11 @@ if __name__ == "__main__":
     opt_state = optimizer.init(params)
 
     # run a first simulation
-    run_simulation(params, static, num_timesteps, simulation_key)
+    run_simulation(model, num_timesteps, simulation_key)
 
     try:
         iteration_range = tqdm(range(num_iterations))
         for i in iteration_range:
-            # run_simulation(params, static, num_timesteps, simulation_key)
             subkey, key = jax.random.split(key, 2)
             loss, params, opt_state = train_step(
                 params,
@@ -108,4 +109,4 @@ if __name__ == "__main__":
 
     model = eqx.combine(params, static)
     for i in range(2):
-        run_simulation(params, static, num_timesteps, simulation_key)
+        run_simulation(model, num_timesteps, simulation_key)
