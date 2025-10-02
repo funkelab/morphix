@@ -7,3 +7,4 @@ Next steps:
 ✔ transition to equinox
 * implement SplitModel, separate from SplitProbModel
 * use state of the art MLP for models
+* consider full covariance with Cholesky factorization for move model

@@ -7,7 +7,7 @@
 # ///
 import time
 import jax
-from models import ReactModel, SplitModel, Model
+from models import create_model
 from utils import print_cells
 from simulation import simulate, simulation_step
 
@@ -28,12 +28,11 @@ if __name__ == "__main__":
     max_num_cells = 8
     cell_state_dims = 32
     num_timesteps = 10_000
+    exploration_eps = 0.0
 
     key = jax.random.key(1912)
-    key1, key2, key3, key = jax.random.split(key, 4)
-    react_model = ReactModel(cell_state_dims, cell_state_dims * 2, key=key1)
-    split_model = SplitModel(cell_state_dims, cell_state_dims * 2, eps=0.0, key=key2)
-    model = Model(max_num_cells, cell_state_dims, react_model, split_model, key=key3)
+    subkey, key = jax.random.split(key, 2)
+    model = create_model(max_num_cells, cell_state_dims, exploration_eps, subkey)
 
     # print a few iterations:
     subkey, key = jax.random.split(key, 2)

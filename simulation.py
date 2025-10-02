@@ -2,7 +2,7 @@ import jax.numpy as jnp
 import jax
 import equinox as eqx
 from cell import Cell
-from models import ReactModel, SplitModel
+from models import ReactModel, MoveModel, SplitModel
 from indexing import masks_to_indices
 from functools import partial
 
@@ -12,22 +12,45 @@ def diffuse(cells: Cell) -> Cell:
     return cells
 
 
-def react(cells: Cell, react_model: ReactModel, split_model: SplitModel, key) -> Cell:
-    key1, key2 = jax.random.split(key)
+def react(
+    cells: Cell,
+    react_model: ReactModel,
+    move_model: MoveModel,
+    split_model: SplitModel,
+    key,
+    debug: bool = False,
+) -> Cell:
+    key1, key2, key3 = jax.random.split(key, 3)
+    num_cells = cells.state.shape[0]
 
     # update cell state
     state = jax.vmap(react_model)(cells.state)
 
+    # update positions
+    mean, std = jax.vmap(move_model)(cells.state)
+    keys = jax.random.split(key1, num_cells)
+    move, log_p_move = jax.vmap(
+        lambda m, v, k: move_model.sample(m, v, k, return_log_p=True)
+    )(mean, std, keys)
+    position = cells.position + move
+
+    if debug:
+        jax.debug.print("move mean: {}", mean)
+        jax.debug.print("move std: {}", std)
+        jax.debug.print("move: {}", move)
+
     # ask split model for split probabilities
-    keys = jax.random.split(key1, cells.state.shape[0])
+    keys = jax.random.split(key2, num_cells)
     p_split = jax.vmap(split_model)(state, keys)
 
     # sample an action (split or not)
-    split = split_model.sample(p_split, key2)
+    split = split_model.sample(p_split, key3)
 
     # update cells
     return eqx.tree_at(
-        lambda c: (c.state, c.p_split, c.split), cells, (state, p_split, split)
+        lambda c: (c.log_p_move, c.position, c.state, c.p_split, c.split),
+        cells,
+        (log_p_move, position, state, p_split, split),
     )
 
 
@@ -66,7 +89,7 @@ def split_and_recombine(cells: Cell) -> Cell:
 
 
 @partial(eqx.filter_jit)
-def simulation_step(cells: Cell, model: eqx.Module, key) -> Cell:
+def simulation_step(cells: Cell, model: eqx.Module, key, debug: bool = False) -> Cell:
     # perform split (as indicated from previous timestep)
     cells = split_and_recombine(cells)
 
@@ -74,20 +97,27 @@ def simulation_step(cells: Cell, model: eqx.Module, key) -> Cell:
     cells = diffuse(cells)
 
     # update the cells internally
-    cells = react(cells, model.react_model, model.split_model, key)
+    cells = react(
+        cells,
+        model.react_model,
+        model.move_model,
+        model.split_model,
+        key,
+        debug,
+    )
 
     return cells
 
 
 @partial(eqx.filter_jit)
-def simulate(model: eqx.Module, num_timesteps: int, key) -> Cell:
+def simulate(model: eqx.Module, num_timesteps: int, key, debug: bool = False) -> Cell:
     key1, key2 = jax.random.split(key, 2)
 
     # create initial cells from current model
     initial_cells = model.initialize_cells(key1)
 
     def step(cells, key):
-        cells = simulation_step(cells, model, key)
+        cells = simulation_step(cells, model, key, debug)
         return cells, cells
 
     keys = jax.random.split(key2, num_timesteps - 1)

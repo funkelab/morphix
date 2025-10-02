@@ -4,6 +4,38 @@ import jax
 import jax.numpy as jnp
 
 
+def create_model(max_num_cells, cell_state_dims, exploration_eps, key):
+    key1, key2, key3, key4 = jax.random.split(key, 4)
+
+    react_model = ReactModel(
+        cell_state_dims,
+        cell_state_dims * 2,
+        key=key1,
+    )
+    move_model = MoveModel(
+        cell_state_dims,
+        cell_state_dims * 2,
+        3,
+        key=key2,
+    )
+    split_model = SplitModel(
+        cell_state_dims,
+        cell_state_dims * 2,
+        eps=exploration_eps,
+        key=key3,
+    )
+
+    model = Model(
+        max_num_cells,
+        cell_state_dims,
+        react_model,
+        move_model,
+        split_model,
+        key=key4,
+    )
+    return model
+
+
 class ReactModel(eqx.Module):
     layers: tuple
 
@@ -22,6 +54,41 @@ class ReactModel(eqx.Module):
         for layer in self.layers:
             x = layer(x)
         return cell_state + x
+
+
+class MoveModel(eqx.Module):
+    layers: tuple
+    spatial_dims: int
+
+    def __init__(self, cell_state_dims: int, hidden_dims: int, spatial_dims: int, key):
+        key1, key2 = jax.random.split(key, 2)
+        self.spatial_dims = spatial_dims
+        self.layers = (
+            eqx.nn.Linear(cell_state_dims, hidden_dims, key=key1),
+            eqx.nn.LayerNorm(hidden_dims),
+            jax.nn.relu,
+            # predict mean and log of standard deviation
+            eqx.nn.Linear(hidden_dims, spatial_dims * 2, key=key2),
+        )
+
+    def __call__(self, cell_state: jax.Array):
+        x = cell_state
+        for layer in self.layers:
+            x = layer(x)
+        mean = x[: self.spatial_dims]
+        # clip the standard deviation to avoid distribution collapse
+        std = jnp.clip(jnp.exp(x[self.spatial_dims :]), min=1e-6)
+        return mean, std
+
+    def sample(self, mean, std, key, return_log_p=False):
+        move = mean + std * jax.random.normal(key, shape=mean.shape)
+        if not return_log_p:
+            return move
+        var = std**2
+        log_p_move = (
+            -0.5 * (jnp.log(2 * jnp.pi * var) + ((move - mean) ** 2) / var)
+        ).sum(axis=-1)
+        return move, log_p_move
 
 
 class SplitModel(eqx.Module):
@@ -85,27 +152,41 @@ class Model(eqx.Module):
     cell_state_dims: int
     initial_cell_states: jax.Array
     react_model: eqx.Module
+    move_model: eqx.Module
     split_model: eqx.Module
 
-    def __init__(self, max_num_cells, cell_state_dims, react_model, split_model, key):
+    def __init__(
+        self, max_num_cells, cell_state_dims, react_model, move_model, split_model, key
+    ):
         self.max_num_cells = max_num_cells
         self.cell_state_dims = cell_state_dims
         self.initial_cell_states = jax.random.uniform(
             key=key, shape=(max_num_cells, cell_state_dims)
         )
         self.react_model = react_model
+        self.move_model = move_model
         self.split_model = split_model
 
     def initialize_cells(self, key):
-        key1, key2 = jax.random.split(key, 2)
+        key1, key2, key3 = jax.random.split(key, 3)
         keys = jax.random.split(key1, self.max_num_cells)
 
         cell_states = self.initial_cell_states
+
+        # initial positions
+        mean, std = jax.vmap(self.move_model)(cell_states)
+        keys = jax.random.split(key2, self.max_num_cells)
+        position, log_p_move = jax.vmap(
+            lambda m, v, k: self.move_model.sample(m, v, k, return_log_p=True)
+        )(mean, std, keys)
+
+        # initial split decisions
         p_split = jax.vmap(self.split_model)(cell_states, keys)
-        split = self.split_model.sample(p_split, key=key2)
+        split = self.split_model.sample(p_split, key=key3)
 
         return Cell(
-            position=jnp.zeros((self.max_num_cells, 3)),
+            log_p_move=log_p_move,
+            position=position,
             state=cell_states,
             # initially, only one cell is active
             parent=(-jnp.ones((self.max_num_cells,), dtype=jnp.int16)).at[0].set(0),

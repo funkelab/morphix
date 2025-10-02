@@ -19,7 +19,9 @@ def print_cells(cells: Cell):
         def print_callback(cell):
             if cell.parent >= 0:
                 print(
-                    f"Cell {cell.state}, p_split {cell.p_split:.3f}, split {cell.split}, parent {cell.parent}"
+                    f"Cell at {cell.position}, state {cell.state}, "
+                    f"p_split {cell.p_split:.3f}, split {cell.split}, "
+                    f"parent {cell.parent}"
                 )
             else:
                 print("<empty>")

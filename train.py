@@ -7,32 +7,56 @@
 #     "tqdm",
 # ]
 # ///
-from models import ReactModel, SplitModel, Model
+from models import create_model
 from simulation import simulate, simulation_step
 from loss import trajectory_loss
 from tqdm import tqdm
 from utils import print_cells
 from functools import partial
+import jax.numpy as jnp
 import equinox as eqx
 import jax
 import optax
 
 
-def simulation_loss(model, num_timesteps: int, key) -> float:
+def simulation_loss(
+    model,
+    num_timesteps: int,
+    key,
+    weight_position: float = 1.0,
+    debug: bool = False,
+) -> float:
     # run the simulation
-    trajectory = simulate(model, num_timesteps, key)
+    trajectory = simulate(model, num_timesteps, key, debug)
 
     # compute the loss
-    return trajectory_loss(trajectory)
+    return trajectory_loss(trajectory, weight_position, debug)
 
 
-@partial(jax.jit, static_argnames=("static", "num_timesteps", "optimizer"))
-def train_step(params, static, num_timesteps, optimizer, opt_state, key):
+@partial(
+    jax.jit,
+    static_argnames=(
+        "static",
+        "num_timesteps",
+        "optimizer",
+        "debug",
+    ),
+)
+def train_step(
+    params,
+    static,
+    num_timesteps,
+    optimizer,
+    opt_state,
+    key,
+    weight_position: float = 1.0,
+    debug: bool = False,
+):
     @partial(jax.jit, static_argnames=("static",))
     @jax.value_and_grad
     def loss_fn(params, static, key):
         model = eqx.combine(params, static)
-        return simulation_loss(model, num_timesteps, key)
+        return simulation_loss(model, num_timesteps, key, weight_position, debug)
 
     loss, grad = loss_fn(params, static, key)
 
@@ -40,16 +64,6 @@ def train_step(params, static, num_timesteps, optimizer, opt_state, key):
     params = optax.apply_updates(params, updates)
 
     return loss, params, opt_state
-
-
-def create_model(max_num_cells, cell_state_dims, exploration_eps, key):
-    key1, key2, key3 = jax.random.split(key, 3)
-    react_model = ReactModel(cell_state_dims, cell_state_dims * 2, key=key1)
-    split_model = SplitModel(
-        cell_state_dims, cell_state_dims * 2, eps=exploration_eps, key=key2
-    )
-    model = Model(max_num_cells, cell_state_dims, react_model, split_model, key=key3)
-    return model
 
 
 def run_simulation(model, num_timesteps, key):
@@ -101,8 +115,11 @@ if __name__ == "__main__":
                 optimizer,
                 opt_state,
                 subkey,
+                weight_position=0.01,
+                debug=False,
             )
             iteration_range.set_description(f"{loss.item():.3f}")
+            assert not jnp.isnan(loss)
     except KeyboardInterrupt:
         print("Training stopped early.")
         pass
