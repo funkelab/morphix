@@ -1,11 +1,11 @@
 import jax
 import jax.numpy as jnp
-from cell import Cell
+
+from .cell import Cell
 
 
 def reward(cells: Cell, t):
     """Compute the reward of a cell state at a given point in time."""
-
     active = cells.parent >= 0
 
     # placeholder: reward as few cells as possible

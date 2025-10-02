@@ -1,10 +1,12 @@
-import jax.numpy as jnp
-import jax
-import equinox as eqx
-from cell import Cell
-from models import ReactModel, MoveModel, SplitModel
-from indexing import masks_to_indices
 from functools import partial
+
+import equinox as eqx
+import jax
+import jax.numpy as jnp
+
+from .cell import Cell
+from .indexing import masks_to_indices
+from .models import MoveModel, ReactModel, SplitModel
 
 
 def diffuse(cells: Cell) -> Cell:

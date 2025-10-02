@@ -1,9 +1,3 @@
-# /// script
-# requires-python = ">=3.13"
-# dependencies = [
-#     "jax",
-# ]
-# ///
 import jax
 import jax.numpy as jnp
 
@@ -36,7 +30,6 @@ def masks_to_indices(
     such that all migrating cells are kept and new daughter cells occopy the
     free slots (which are not active).
     """
-
     keep_daughters = split & active
 
     # following example for simple masks:

@@ -1,7 +1,8 @@
 import equinox as eqx
-from cell import Cell
 import jax
 import jax.numpy as jnp
+
+from .cell import Cell
 
 
 def create_model(max_num_cells, cell_state_dims, exploration_eps, key):
@@ -105,7 +106,6 @@ class SplitModel(eqx.Module):
         """Compute the probability of a split event from the cell state.
 
         Args:
-
             cell_state_dims:
 
                 The size of the cell state.

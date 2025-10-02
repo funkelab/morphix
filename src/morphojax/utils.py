@@ -1,6 +1,8 @@
 import jax
 import jax.numpy as jnp
-from cell import Cell
+
+from .cell import Cell
+from .simulation import simulation_step
 
 
 def straight_through(x, f):
@@ -33,3 +35,15 @@ def print_cells(cells: Cell):
             jax.vmap(print_cells)(jax.tree.map(lambda a: a[:10], cells))
             if num_cells > 10:
                 jax.debug.print("(and {} more)", num_cells - 10)
+
+
+def print_simulation(model, num_timesteps, key):
+    subkey, key = jax.random.split(key, 2)
+    cells = model.initialize_cells(subkey)
+    print()
+    print()
+    for t in range(min(num_timesteps, 10)):
+        print(f"{t=}:")
+        print_cells(cells)
+        subkey, key = jax.random.split(key, 2)
+        cells = simulation_step(cells, model, subkey)

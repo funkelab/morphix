@@ -1,5 +1,5 @@
-import jax
 import equinox as eqx
+import jax
 
 
 class Cell(eqx.Module):

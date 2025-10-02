@@ -1,0 +1,82 @@
+# https://peps.python.org/pep-0517/
+# https://hatch.pypa.io/latest/config/build/
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# https://peps.python.org/pep-0621/
+[project]
+name = "morphojax"
+description = "Trainable Morphogenesis Simulation in JAX"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "Jan Funke", email = "funkej@janelia.hhmi.org" },
+    { name = "Morgan Schwartz", email = "schwartzm10@janelia.hhmi.org" },
+]
+dynamic = ["version"]
+dependencies = ["jax", "equinox", "optax"]
+
+[project.optional-dependencies]
+dev = ["pre-commit", "pytest", "pytest-cov", "ruff", "twine", "build"]
+test = ["pytest", "pytest-cov"]
+
+[project.urls]
+homepage = "https://github.com/funkelab/morphojax"
+
+# https://hatch.pypa.io/latest/version/
+[tool.hatch.version]
+path = "src/morphojax/__init__.py"
+
+# https://beta.ruff.rs/docs
+[tool.ruff]
+target-version = "py38"
+src = ["src/morphojax"]
+
+[tool.ruff.lint]
+select = [
+    "F",   # pyflakes
+    "E",   # pycodestyle
+    "I",   # isort
+    "UP",  # pyupgrade
+    "RUF", # ruff specific rules
+    "D",
+]
+ignore = [
+    "D100", # Missing docstring in public mod
+    "D104", # Missing docstring in public package
+    "D105", # Missing docstring in magic method
+    "D107", # Missing docstring in `__init__`
+    "D102", # Missing docstring in public method
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D"]
+
+# https://docs.pytest.org/en/6.2.x/customize.html
+[tool.pytest.ini_options]
+minversion = "6.0"
+testpaths = ["tests"]
+filterwarnings = [
+    "error:::morphojax",
+]
+
+# https://coverage.readthedocs.io/en/6.4/config.html
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "pragma: ${PY_MAJOR_VERSION} no cover",
+    "if TYPE_CHECKING:",
+    "\\.\\.\\.",
+]
+
+[tool.mypy]
+files = "src/morphojax"
+strict = true             # feel free to relax this if it's annoying
+allow_untyped_defs = true # TODO: can eventually fill out typing and remove this
+# allow_untyped_calls = true    # TODO: can eventually fill out typing and remove this
+disallow_any_generics = false
+ignore_missing_imports = true
