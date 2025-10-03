@@ -1,3 +1,5 @@
+import pickle
+
 import jax
 import jax.numpy as jnp
 
@@ -35,6 +37,16 @@ def print_cells(cells: Cell):
             jax.vmap(print_cells)(jax.tree.map(lambda a: a[:10], cells))
             if num_cells > 10:
                 jax.debug.print("(and {} more)", num_cells - 10)
+
+
+def save_lineage(filename, lineage):
+    with open(filename, "wb") as file:
+        pickle.dump(lineage, file)
+
+
+def load_lineage(filename):
+    with open(filename, "rb") as file:
+        return pickle.load(file)
 
 
 def print_simulation(model, num_timesteps, key):

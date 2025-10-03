@@ -187,6 +187,7 @@ class Model(eqx.Module):
         return Cell(
             log_p_move=log_p_move,
             position=position,
+            size=jnp.ones((self.max_num_cells,), dtype=jnp.float32),
             state=cell_states,
             # initially, only one cell is active
             parent=(-jnp.ones((self.max_num_cells,), dtype=jnp.int16)).at[0].set(0),

@@ -57,9 +57,18 @@ def react(
 
 
 def split_cell(cell: Cell):
-    # do nothing for now, just copy the cell
+    # do nothing for now, just copy the cell...
     daughter_a = cell
     daughter_b = cell
+
+    # ...and move the daughters a bit (to be replaced with an actual split
+    # along a predicted division plane)
+    daughter_a = eqx.tree_at(
+        lambda c: c.position, daughter_a, cell.position + jnp.array([0.1, 0.0, 0.0])
+    )
+    daughter_b = eqx.tree_at(
+        lambda c: c.position, daughter_b, cell.position - jnp.array([0.1, 0.0, 0.0])
+    )
 
     return (daughter_a, daughter_b)
 
