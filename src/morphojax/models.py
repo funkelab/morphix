@@ -6,7 +6,7 @@ from .cell import Cell
 
 
 def create_model(max_num_cells, cell_state_dims, exploration_eps, key):
-    key1, key2, key3, key4 = jax.random.split(key, 4)
+    key1, key2, key3, key4, key5 = jax.random.split(key, 5)
 
     react_model = ReactModel(
         cell_state_dims,
@@ -19,11 +19,18 @@ def create_model(max_num_cells, cell_state_dims, exploration_eps, key):
         3,
         key=key2,
     )
-    split_model = SplitModel(
+    split_prob_model = SplitProbModel(
         cell_state_dims,
         cell_state_dims * 2,
         eps=exploration_eps,
         key=key3,
+    )
+
+    split_model = SplitModel(
+        cell_state_dims,
+        3,
+        cell_state_dims * 2,
+        key=key4,
     )
 
     model = Model(
@@ -31,8 +38,9 @@ def create_model(max_num_cells, cell_state_dims, exploration_eps, key):
         cell_state_dims,
         react_model,
         move_model,
+        split_prob_model,
         split_model,
-        key=key4,
+        key=key5,
     )
     return model
 
@@ -92,7 +100,7 @@ class MoveModel(eqx.Module):
         return move, log_p_move
 
 
-class SplitModel(eqx.Module):
+class SplitProbModel(eqx.Module):
     eps: float
     layers: tuple
 
@@ -147,16 +155,83 @@ class SplitModel(eqx.Module):
         return split_probs > uniform
 
 
+class SplitModel(eqx.Module):
+    layers: tuple
+    cell_state_dims: int
+    spatial_dims: int
+
+    def __init__(
+        self,
+        cell_state_dims: int,
+        spatial_dims: int,
+        hidden_dims: int,
+        key,
+    ):
+        """Predict how to divide a cell.
+
+        Given a cell state, output coefficients for how to split the state into
+        two daughter cells, the ratio of their sizes, and the orientation of
+        the division plane.
+
+        Args:
+            cell_state_dims:
+
+                The size of the cell state.
+
+            spatial_dims:
+
+                The number of spatial dimensions (used to predict the division
+                plane).
+
+            hidden_dims:
+
+                The size of the hidden layer of the MLP.
+
+            key:
+
+                RNG key to use for initialization.
+        """
+        key1, key2 = jax.random.split(key, 2)
+        self.layers = (
+            eqx.nn.Linear(cell_state_dims, hidden_dims, key=key1),
+            eqx.nn.LayerNorm(hidden_dims),
+            jax.nn.relu,
+            eqx.nn.Linear(hidden_dims, cell_state_dims + 1 + spatial_dims, key=key2),
+        )
+        self.cell_state_dims = cell_state_dims
+        self.spatial_dims = spatial_dims
+
+    def __call__(self, cell_state: jax.Array):
+        x = cell_state
+        for layer in self.layers:
+            x = layer(x)
+        state_ratio = jax.nn.sigmoid(x[: self.cell_state_dims])
+        size_ratio = jax.nn.sigmoid(x[self.cell_state_dims])
+        division_plane = x[self.cell_state_dims + 1 :]
+        division_plane = division_plane / jnp.clip(
+            jnp.linalg.norm(division_plane), min=1e-10
+        )
+        return state_ratio, size_ratio, division_plane
+
+
 class Model(eqx.Module):
     max_num_cells: int
     cell_state_dims: int
     initial_cell_states: jax.Array
     react_model: eqx.Module
     move_model: eqx.Module
+    split_prob_model: eqx.Module
     split_model: eqx.Module
 
     def __init__(
-        self, max_num_cells, cell_state_dims, react_model, move_model, split_model, key
+        self,
+        max_num_cells,
+        cell_state_dims,
+        react_model,
+        move_model,
+        split_prob_model,
+        split_model,
+        key,
     ):
         self.max_num_cells = max_num_cells
         self.cell_state_dims = cell_state_dims
@@ -165,6 +240,7 @@ class Model(eqx.Module):
         )
         self.react_model = react_model
         self.move_model = move_model
+        self.split_prob_model = split_prob_model
         self.split_model = split_model
 
     def initialize_cells(self, key):
@@ -181,8 +257,8 @@ class Model(eqx.Module):
         )(mean, std, keys)
 
         # initial split decisions
-        p_split = jax.vmap(self.split_model)(cell_states, keys)
-        split = self.split_model.sample(p_split, key=key3)
+        p_split = jax.vmap(self.split_prob_model)(cell_states, keys)
+        split = self.split_prob_model.sample(p_split, key=key3)
 
         return Cell(
             log_p_move=log_p_move,

@@ -6,7 +6,7 @@ import jax.numpy as jnp
 
 from .cell import Cell
 from .indexing import masks_to_indices
-from .models import MoveModel, ReactModel, SplitModel
+from .models import Model, SplitModel
 
 
 def diffuse(cells: Cell) -> Cell:
@@ -16,9 +16,7 @@ def diffuse(cells: Cell) -> Cell:
 
 def react(
     cells: Cell,
-    react_model: ReactModel,
-    move_model: MoveModel,
-    split_model: SplitModel,
+    model: Model,
     key,
     debug: bool = False,
 ) -> Cell:
@@ -26,13 +24,13 @@ def react(
     num_cells = cells.state.shape[0]
 
     # update cell state
-    state = jax.vmap(react_model)(cells.state)
+    state = jax.vmap(model.react_model)(cells.state)
 
     # update positions
-    mean, std = jax.vmap(move_model)(cells.state)
+    mean, std = jax.vmap(model.move_model)(cells.state)
     keys = jax.random.split(key1, num_cells)
     move, log_p_move = jax.vmap(
-        lambda m, v, k: move_model.sample(m, v, k, return_log_p=True)
+        lambda m, v, k: model.move_model.sample(m, v, k, return_log_p=True)
     )(mean, std, keys)
     position = cells.position + move
 
@@ -43,37 +41,50 @@ def react(
 
     # ask split model for split probabilities
     keys = jax.random.split(key2, num_cells)
-    p_split = jax.vmap(split_model)(state, keys)
+    p_split = jax.vmap(model.split_prob_model)(state, keys)
 
     # sample an action (split or not)
-    split = split_model.sample(p_split, key3)
+    split = model.split_prob_model.sample(p_split, key3)
 
     # update cells
-    return eqx.tree_at(
-        lambda c: (c.log_p_move, c.position, c.state, c.p_split, c.split),
-        cells,
-        (log_p_move, position, state, p_split, split),
+    return cells.replace(
+        log_p_move=log_p_move,
+        position=position,
+        state=state,
+        p_split=p_split,
+        split=split,
     )
 
 
-def split_cell(cell: Cell):
-    # do nothing for now, just copy the cell...
-    daughter_a = cell
-    daughter_b = cell
+def split_cell(cell: Cell, split_model: SplitModel):
+    state_ratio, size_ratio, division_plane = split_model(cell.state)
 
-    # ...and move the daughters a bit (to be replaced with an actual split
-    # along a predicted division plane)
-    daughter_a = eqx.tree_at(
-        lambda c: c.position, daughter_a, cell.position + jnp.array([0.1, 0.0, 0.0])
+    daughter_a_state = state_ratio * cell.state
+    daughter_b_state = (1.0 - state_ratio) * cell.state
+
+    daughter_a_size = size_ratio * cell.size
+    daughter_b_size = (1.0 - size_ratio) * cell.size
+
+    # compute positions of daughter cells by moving them along the division
+    # plane vector, proportional to their size (i.e., the radius)
+    daughter_a_position = cell.position + division_plane * daughter_a_size
+    daughter_b_position = cell.position - division_plane * daughter_b_size
+
+    daughter_a = cell.replace(
+        state=daughter_a_state,
+        size=daughter_a_size,
+        position=daughter_a_position,
     )
-    daughter_b = eqx.tree_at(
-        lambda c: c.position, daughter_b, cell.position - jnp.array([0.1, 0.0, 0.0])
+    daughter_b = cell.replace(
+        state=daughter_b_state,
+        size=daughter_b_size,
+        position=daughter_b_position,
     )
 
     return (daughter_a, daughter_b)
 
 
-def split_and_recombine(cells: Cell) -> Cell:
+def split_and_recombine(cells: Cell, split_model: SplitModel) -> Cell:
     # total number of cells (including inactive)
     num_cells = len(cells.parent)
 
@@ -82,10 +93,12 @@ def split_and_recombine(cells: Cell) -> Cell:
     active = cells.parent >= 0
     indices = jnp.arange(num_cells, dtype=jnp.int16)
     parent_indices = indices * active - (1 - active)
-    cells = eqx.tree_at(lambda c: c.parent, cells, parent_indices)
+    cells = cells.replace(parent=parent_indices)
 
     # split all cells
-    daughters_a, daughters_b = jax.vmap(split_cell)(cells)
+    daughters_a, daughters_b = jax.vmap(split_cell, in_axes=(0, None))(
+        cells, split_model
+    )
 
     # figure out which cells to keep
     indices = masks_to_indices(active, cells.split, num_cells)
@@ -102,7 +115,7 @@ def split_and_recombine(cells: Cell) -> Cell:
 @partial(eqx.filter_jit)
 def simulation_step(cells: Cell, model: eqx.Module, key, debug: bool = False) -> Cell:
     # perform split (as indicated from previous timestep)
-    cells = split_and_recombine(cells)
+    cells = split_and_recombine(cells, model.split_model)
 
     # interact with the environment
     cells = diffuse(cells)
@@ -110,9 +123,7 @@ def simulation_step(cells: Cell, model: eqx.Module, key, debug: bool = False) ->
     # update the cells internally
     cells = react(
         cells,
-        model.react_model,
-        model.move_model,
-        model.split_model,
+        model,
         key,
         debug,
     )

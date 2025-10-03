@@ -18,12 +18,13 @@ def step_function(x, threshold):
 def print_cells(cells: Cell):
     dims = len(cells.parent.shape)
 
-    with jnp.printoptions(precision=3, threshold=5, suppress=True):
+    with jnp.printoptions(precision=3, threshold=3, suppress=True):
 
         def print_callback(cell):
             if cell.parent >= 0:
                 print(
-                    f"Cell at {cell.position}, state {cell.state}, "
+                    f"Cell at {cell.position}, size {cell.size}, "
+                    f"state {cell.state}, "
                     f"p_split {cell.p_split:.3f}, split {cell.split}, "
                     f"parent {cell.parent}"
                 )
