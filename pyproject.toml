@@ -18,7 +18,7 @@ dynamic = ["version"]
 dependencies = ["jax", "equinox", "optax"]
 
 [project.optional-dependencies]
-gui = ["pygfx", "pyqt5", "wgpu"]
+gui = ["pygfx", "pyqt5", "umap-learn"]
 dev = ["pre-commit", "pytest", "pytest-cov", "ruff", "twine", "build"]
 test = ["pytest", "pytest-cov"]
 

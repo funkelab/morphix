@@ -1,6 +1,7 @@
 import sys
 
 import numpy as np
+import umap
 
 try:
     import pygfx as gfx
@@ -14,7 +15,7 @@ try:
         QVBoxLayout,
         QWidget,
     )
-    from wgpu.gui.qt import WgpuCanvas
+    from rendercanvas.auto import RenderCanvas
 except ImportError as e:
     raise ImportError(
         "This module requires additional dependencies to be installed. "
@@ -30,9 +31,19 @@ class LineageViewer(QWidget):
         self.current_t = 0
         self.playing = False
 
+        # compute colors from UMAP of cell state
+        print("Computing colors from state...")
+        colors = umap.UMAP(
+            n_components=3,
+            random_state=1912,
+        ).fit_transform(lineage.state.reshape(-1, lineage.state.shape[-1]))
+        colors_min = colors.min(axis=0)
+        colors_max = colors.max(axis=0)
+        self.colors = (colors - colors_min) / (colors_max - colors_min)
+
         layout = QVBoxLayout()
         self.setLayout(layout)
-        self.canvas = WgpuCanvas()
+        self.canvas = RenderCanvas()
         layout.addWidget(self.canvas, stretch=1)
 
         self.play_button = QPushButton("Play")
@@ -59,17 +70,21 @@ class LineageViewer(QWidget):
         self.timer.timeout.connect(self.advance_frame)
 
         self.renderer = gfx.renderers.WgpuRenderer(self.canvas)
-        self.scene = gfx.Scene()
         self.camera = gfx.PerspectiveCamera(60, 16 / 9)
         self.camera.local.position = (0, 0, 10)
         self.camera.look_at((0, 0, 0))
         self.controller = gfx.FlyController(self.camera, register_events=self.renderer)
         self.controller.enable_keys = True
 
-        self.scene.add(gfx.AmbientLight(intensity=1.0))
         light = gfx.DirectionalLight(color=(1, 1, 1), intensity=1.0)
         light.local.position = (5, 10, 5)
+
+        self.objects = gfx.Scene()
+
+        self.scene = gfx.Scene()
+        self.scene.add(gfx.AmbientLight(intensity=1.0))
         self.scene.add(light)
+        self.scene.add(self.objects)
 
         self.sphere = gfx.sphere_geometry(
             radius=1.0,
@@ -106,10 +121,7 @@ class LineageViewer(QWidget):
         self.canvas.update()
 
     def clear_scene_objects(self):
-        for m in self.cell_meshes:
-            self.scene.remove(m)
-        for line in self.parent_lines:
-            self.scene.remove(line)
+        self.objects.clear()
         self.cell_meshes = []
         self.parent_lines = []
 
@@ -124,8 +136,9 @@ class LineageViewer(QWidget):
 
         # draw each cell
         for i in range(num_cells):
+            color = self.colors[t * num_cells + i]
             material = gfx.MeshPhongMaterial(
-                color=(0.8, 0.6, 0.8) if active[i] else (1.0, 1.0, 1.0),
+                color=color if active[i] else (1.0, 1.0, 1.0),
                 opacity=0.8 if active[i] else 0.1,
                 shininess=100,
                 side="front",
@@ -135,7 +148,6 @@ class LineageViewer(QWidget):
             s = float(sizes[i])
             mesh.local.scale = (s, s, s)
             mesh.render_order = 1 if active[i] else 2
-            self.scene.add(mesh)
             self.cell_meshes.append(mesh)
 
         # draw lines from each cell to its parent in previous timestep
@@ -158,8 +170,9 @@ class LineageViewer(QWidget):
                 geometry.positions = buf
                 material = gfx.LineMaterial(color=(0.8, 0.2, 0.2), thickness=2.0)
                 lines = gfx.Line(geometry, material)
-                self.scene.add(lines)
                 self.parent_lines.append(lines)
+
+        self.objects.add(*self.cell_meshes, *self.parent_lines)
 
 
 def show_lineage(lineage):
