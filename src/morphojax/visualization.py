@@ -80,6 +80,7 @@ class LineageViewer(QWidget):
         light.local.position = (5, 10, 5)
 
         self.objects = gfx.Scene()
+        self.cached_objects = {}
 
         self.scene = gfx.Scene()
         self.scene.add(gfx.AmbientLight(intensity=1.0))
@@ -91,9 +92,6 @@ class LineageViewer(QWidget):
             width_segments=20,
             height_segments=20,
         )
-
-        self.cell_meshes = []
-        self.parent_lines = []
 
         self.update_scene_for_t(0)
         self.canvas.request_draw(lambda: self.renderer.render(self.scene, self.camera))
@@ -122,17 +120,23 @@ class LineageViewer(QWidget):
 
     def clear_scene_objects(self):
         self.objects.clear()
-        self.cell_meshes = []
-        self.parent_lines = []
 
     def update_scene_for_t(self, t):
         self.clear_scene_objects()
+        self.objects.add(*self.get_objects(t))
+
+    def get_objects(self, t):
+        if t in self.cached_objects:
+            return self.cached_objects[t]
 
         position = self.lineage.position[t]
         sizes = self.lineage.size[t]
         parents = self.lineage.parent[t]
         active = parents >= 0
         num_cells = position.shape[0]
+
+        cell_meshes = []
+        parent_lines = []
 
         # draw each cell
         for i in range(num_cells):
@@ -148,7 +152,7 @@ class LineageViewer(QWidget):
             s = float(sizes[i])
             mesh.local.scale = (s, s, s)
             mesh.render_order = 1 if active[i] else 2
-            self.cell_meshes.append(mesh)
+            cell_meshes.append(mesh)
 
         # draw lines from each cell to its parent in previous timestep
         if t > 0:
@@ -170,9 +174,12 @@ class LineageViewer(QWidget):
                 geometry.positions = buf
                 material = gfx.LineMaterial(color=(0.8, 0.2, 0.2), thickness=2.0)
                 lines = gfx.Line(geometry, material)
-                self.parent_lines.append(lines)
+                parent_lines.append(lines)
 
-        self.objects.add(*self.cell_meshes, *self.parent_lines)
+        objects = cell_meshes + parent_lines
+        self.cached_objects[t] = objects
+
+        return objects
 
 
 def show_lineage(lineage):
