@@ -125,8 +125,8 @@ class LineageViewer(QWidget):
         # draw each cell
         for i in range(num_cells):
             material = gfx.MeshPhongMaterial(
-                color=(0.8, 0.6, 0.8),
-                opacity=0.6 if active[i] else 0.2,
+                color=(0.8, 0.6, 0.8) if active[i] else (1.0, 1.0, 1.0),
+                opacity=0.8 if active[i] else 0.1,
                 shininess=100,
                 side="front",
             )
@@ -134,7 +134,7 @@ class LineageViewer(QWidget):
             mesh.local.position = position[i]
             s = float(sizes[i])
             mesh.local.scale = (s, s, s)
-            mesh.render_order = 1
+            mesh.render_order = 1 if active[i] else 2
             self.scene.add(mesh)
             self.cell_meshes.append(mesh)
 
