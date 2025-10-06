@@ -95,8 +95,37 @@ class LineageViewer(QWidget):
             height_segments=20,
         )
 
+        self.reset_camera()
         self.update_scene_for_t(0)
         self.canvas.request_draw(lambda: self.renderer.render(self.scene, self.camera))
+
+    def compute_scene_bounds(self):
+        mins = (
+            self.lineage.position.reshape(-1, 3) - self.lineage.radius.reshape(-1, 1)
+        ).min(axis=0)
+        maxs = (
+            self.lineage.position.reshape(-1, 3) + self.lineage.radius.reshape(-1, 1)
+        ).max(axis=0)
+        return mins, maxs
+
+    def reset_camera(self, margin=1.2):
+        """Position the camera so all objects are visible."""
+        min_corner, max_corner = self.compute_scene_bounds()
+        center = (min_corner + max_corner) / 2.0
+        extent = max_corner - min_corner
+        radius = np.linalg.norm(extent) / 2.0 * margin
+
+        if isinstance(self.camera, gfx.PerspectiveCamera):
+            # Compute distance from center based on FOV
+            fov = np.deg2rad(self.camera.fov)
+            distance = radius / np.sin(fov / 2.0)
+            self.camera.local.position = (center[0], center[1], center[2] + distance)
+            self.camera.look_at(center)
+        elif isinstance(self.camera, gfx.OrthographicCamera):
+            self.camera.width = extent[0] * margin
+            self.camera.height = extent[1] * margin
+            self.camera.local.position = (center[0], center[1], center[2] + radius)
+            self.camera.look_at(center)
 
     def toggle_play(self, checked):
         self.playing = bool(checked)
