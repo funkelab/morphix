@@ -45,6 +45,7 @@ class LineageViewer(QWidget):
         self.setLayout(layout)
         self.canvas = RenderCanvas()
         layout.addWidget(self.canvas, stretch=1)
+        self.canvas.add_event_handler(self.on_key_down, "key_down")
 
         self.play_button = QPushButton("Play")
         self.play_button.setCheckable(True)
@@ -77,6 +78,8 @@ class LineageViewer(QWidget):
         self.controller.enable_keys = True
         self.controller.controls["r"] = ("move", "repeat", (0.0, 1.0, 0.0))
         self.controller.controls["f"] = ("move", "repeat", (0.0, -1.0, 0.0))
+        del self.controller.controls[" "]
+        del self.controller.controls["shift"]
 
         light = gfx.DirectionalLight(color=(1, 1, 1), intensity=1.0)
         light.local.position = (5, 10, 5)
@@ -98,6 +101,10 @@ class LineageViewer(QWidget):
         self.reset_camera()
         self.update_scene_for_t(0)
         self.canvas.request_draw(lambda: self.renderer.render(self.scene, self.camera))
+
+    def on_key_down(self, event):
+        if event["key"] == " ":
+            self.play_button.click()
 
     def compute_scene_bounds(self):
         mins = (
