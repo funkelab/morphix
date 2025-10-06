@@ -1,5 +1,5 @@
-MorphoJAX
-=========
+Morphix
+=======
 
 Trainable Morphogenesis Simulation in JAX.
 

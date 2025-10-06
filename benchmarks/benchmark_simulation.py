@@ -1,16 +1,16 @@
 # /// script
 # requires-python = ">=3.13"
 # dependencies = [
-#     "morphojax",
+#     "morphix",
 # ]
 #
 # [tool.uv.sources]
-# morphojax = { path = "../", editable = true }
+# morphix = { path = "../", editable = true }
 # ///
 import time
 
 import jax
-import morphojax as mj
+import morphix as mx
 
 if __name__ == "__main__":
     max_num_cells = 8
@@ -20,11 +20,11 @@ if __name__ == "__main__":
 
     key = jax.random.key(1912)
     subkey, key = jax.random.split(key, 2)
-    model = mj.create_model(max_num_cells, cell_state_dims, exploration_eps, subkey)
+    model = mx.create_model(max_num_cells, cell_state_dims, exploration_eps, subkey)
 
     # print a few iterations:
     subkey, key = jax.random.split(key, 2)
-    mj.print_simulation(model, num_timesteps, subkey)
+    mx.print_simulation(model, num_timesteps, subkey)
 
     # benchmark many more iterations
     start = time.time()
@@ -32,7 +32,7 @@ if __name__ == "__main__":
     cells = model.initialize_cells(subkey)
     for t in range(num_timesteps):
         subkey, key = jax.random.split(key, 2)
-        cells = mj.simulation_step(cells, model, subkey)
+        cells = mx.simulation_step(cells, model, subkey)
     cells.p_split.block_until_ready()
     total = time.time() - start
     print(
@@ -43,13 +43,13 @@ if __name__ == "__main__":
 
     # same with simulate function, including compilation time
     start = time.time()
-    all_cells = mj.simulate(model, num_timesteps, subkey)
+    all_cells = mx.simulate(model, num_timesteps, subkey)
     all_cells.p_split.block_until_ready()
     print(f"first run (including compilation): {time.time() - start:.3f}s")
 
     # and without compilation time
     start = time.time()
-    all_cells = mj.simulate(model, num_timesteps, subkey)
+    all_cells = mx.simulate(model, num_timesteps, subkey)
     all_cells.p_split.block_until_ready()
     total = time.time() - start
     print(

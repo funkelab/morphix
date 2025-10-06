@@ -19,7 +19,7 @@ try:
 except ImportError as e:
     raise ImportError(
         "This module requires additional dependencies to be installed. "
-        "Please install 'morphojax[gui]'."
+        "Please install 'morphix[gui]'."
     ) from e
 
 
@@ -188,7 +188,7 @@ class LineageViewer(QWidget):
 def show_lineage(lineage):
     app = QApplication(sys.argv)
     win = LineageViewer(lineage)
-    win.setWindowTitle("morphojax lineage viewer")
+    win.setWindowTitle("morphix lineage viewer")
     win.resize(1200, 800)
     win.show()
     app.exec_()
