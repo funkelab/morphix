@@ -75,6 +75,8 @@ class LineageViewer(QWidget):
         self.camera.look_at((0, 0, 0))
         self.controller = gfx.FlyController(self.camera, register_events=self.renderer)
         self.controller.enable_keys = True
+        self.controller.controls["r"] = ("move", "repeat", (0.0, 1.0, 0.0))
+        self.controller.controls["f"] = ("move", "repeat", (0.0, -1.0, 0.0))
 
         light = gfx.DirectionalLight(color=(1, 1, 1), intensity=1.0)
         light.local.position = (5, 10, 5)
@@ -144,6 +146,7 @@ class LineageViewer(QWidget):
             material = gfx.MeshPhongMaterial(
                 color=color if active[i] else (1.0, 1.0, 1.0),
                 opacity=0.8 if active[i] else 0.1,
+                alpha_mode="blend",
                 shininess=100,
                 side="front",
             )
