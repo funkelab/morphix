@@ -23,7 +23,7 @@ def print_cells(cells: Cell):
         def print_callback(cell):
             if cell.parent >= 0:
                 print(
-                    f"Cell at {cell.position}, size {cell.size}, "
+                    f"Cell at {cell.position}, radius {cell.radius}, "
                     f"state {cell.state}, "
                     f"p_split {cell.p_split:.3f}, split {cell.split}, "
                     f"parent {cell.parent}"

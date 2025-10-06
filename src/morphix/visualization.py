@@ -132,7 +132,7 @@ class LineageViewer(QWidget):
             return self.cached_objects[t]
 
         position = self.lineage.position[t]
-        sizes = self.lineage.size[t]
+        radii = self.lineage.radius[t]
         parents = self.lineage.parent[t]
         active = parents >= 0
         num_cells = position.shape[0]
@@ -152,7 +152,7 @@ class LineageViewer(QWidget):
             )
             mesh = gfx.Mesh(self.sphere, material)
             mesh.local.position = position[i]
-            s = float(sizes[i])
+            s = float(radii[i])
             mesh.local.scale = (s, s, s)
             mesh.render_order = 1 if active[i] else 2
             cell_meshes.append(mesh)

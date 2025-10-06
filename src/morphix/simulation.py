@@ -57,27 +57,31 @@ def react(
 
 
 def split_cell(cell: Cell, split_model: SplitModel):
-    state_ratio, size_ratio, division_plane = split_model(cell.state)
+    state_ratio, volume_ratio, division_plane = split_model(cell.state)
 
     daughter_a_state = state_ratio * cell.state
     daughter_b_state = (1.0 - state_ratio) * cell.state
 
-    daughter_a_size = size_ratio * cell.size
-    daughter_b_size = (1.0 - size_ratio) * cell.size
+    volume = (4.0 / 3.0) * jnp.pi * cell.radius**3
+    daughter_a_volume = volume_ratio * volume
+    daughter_b_volume = (1.0 - volume_ratio) * volume
+
+    daughter_a_radius = (daughter_a_volume * 3.0 / (4.0 * jnp.pi)) ** (1.0 / 3)
+    daughter_b_radius = (daughter_b_volume * 3.0 / (4.0 * jnp.pi)) ** (1.0 / 3)
 
     # compute positions of daughter cells by moving them along the division
-    # plane vector, proportional to their size (i.e., the radius)
-    daughter_a_position = cell.position + division_plane * daughter_a_size
-    daughter_b_position = cell.position - division_plane * daughter_b_size
+    # plane vector, proportional to their radius
+    daughter_a_position = cell.position + division_plane * daughter_a_radius
+    daughter_b_position = cell.position - division_plane * daughter_b_radius
 
     daughter_a = cell.replace(
         state=daughter_a_state,
-        size=daughter_a_size,
+        radius=daughter_a_radius,
         position=daughter_a_position,
     )
     daughter_b = cell.replace(
         state=daughter_b_state,
-        size=daughter_b_size,
+        radius=daughter_b_radius,
         position=daughter_b_position,
     )
 

@@ -206,12 +206,12 @@ class SplitModel(eqx.Module):
         for layer in self.layers:
             x = layer(x)
         state_ratio = jax.nn.sigmoid(x[: self.cell_state_dims])
-        size_ratio = jax.nn.sigmoid(x[self.cell_state_dims])
+        volume_ratio = jax.nn.sigmoid(x[self.cell_state_dims])
         division_plane = x[self.cell_state_dims + 1 :]
         division_plane = division_plane / jnp.clip(
             jnp.linalg.norm(division_plane), min=1e-10
         )
-        return state_ratio, size_ratio, division_plane
+        return state_ratio, volume_ratio, division_plane
 
 
 class Model(eqx.Module):
@@ -263,7 +263,7 @@ class Model(eqx.Module):
         return Cell(
             log_p_move=log_p_move,
             position=position,
-            size=jnp.ones((self.max_num_cells,), dtype=jnp.float32),
+            radius=jnp.ones((self.max_num_cells,), dtype=jnp.float32),
             state=cell_states,
             # initially, only one cell is active
             parent=(-jnp.ones((self.max_num_cells,), dtype=jnp.int16)).at[0].set(0),
