@@ -76,9 +76,12 @@ class LineageViewer(QWidget):
         self.camera.look_at((0, 0, 0))
         self.controller = gfx.FlyController(self.camera, register_events=self.renderer)
         self.controller.enable_keys = True
+        self.controller.controls["mouse1"] = ("rotate", "drag", (0.001, 0.001))
         self.controller.controls["r"] = ("move", "repeat", (0.0, 1.0, 0.0))
         self.controller.controls["f"] = ("move", "repeat", (0.0, -1.0, 0.0))
         del self.controller.controls[" "]
+        del self.controller.controls["q"]
+        del self.controller.controls["e"]
         del self.controller.controls["shift"]
 
         light = gfx.DirectionalLight(color=(1, 1, 1), intensity=1.0)
@@ -105,6 +108,10 @@ class LineageViewer(QWidget):
     def on_key_down(self, event):
         if event["key"] == " ":
             self.play_button.click()
+        elif event["key"] == "q":
+            self.advance_frame(-1)
+        elif event["key"] == "e":
+            self.advance_frame(1)
 
     def compute_scene_bounds(self):
         mins = (
@@ -143,8 +150,8 @@ class LineageViewer(QWidget):
             self.play_button.setText("Play")
             self.timer.stop()
 
-    def advance_frame(self):
-        t = (self.current_t + 1) % self.n_timesteps
+    def advance_frame(self, delta=1):
+        t = (self.current_t + delta) % self.n_timesteps
         self.slider.setValue(t)
 
     def on_slider_changed(self, t):
