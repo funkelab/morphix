@@ -24,12 +24,13 @@ except ImportError as e:
 
 
 class LineageViewer(QWidget):
-    def __init__(self, lineage, parent=None):
+    def __init__(self, lineage, inactive_cell_opacity=0.01, parent=None):
         super().__init__(parent)
         self.lineage = lineage
         self.n_timesteps = lineage.position.shape[0]
         self.current_t = 0
         self.playing = False
+        self.inactive_cell_opacity = inactive_cell_opacity
 
         # compute colors from UMAP of cell state
         print("Computing colors from state...")
@@ -188,7 +189,7 @@ class LineageViewer(QWidget):
             color = self.colors[t * num_cells + i]
             material = gfx.MeshPhongMaterial(
                 color=color if active[i] else (1.0, 1.0, 1.0),
-                opacity=0.8 if active[i] else 0.1,
+                opacity=0.8 if active[i] else self.inactive_cell_opacity,
                 alpha_mode="blend",
                 shininess=100,
                 side="front",
@@ -228,9 +229,9 @@ class LineageViewer(QWidget):
         return objects
 
 
-def show_lineage(lineage):
+def show_lineage(lineage, inactive_cell_opacity=0.01):
     app = QApplication(sys.argv)
-    win = LineageViewer(lineage)
+    win = LineageViewer(lineage, inactive_cell_opacity=inactive_cell_opacity)
     win.setWindowTitle("morphix lineage viewer")
     win.resize(1200, 800)
     win.show()
