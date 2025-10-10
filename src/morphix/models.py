@@ -3,9 +3,17 @@ import jax
 import jax.numpy as jnp
 
 from .cell import Cell
+from .mechanics import morse_update
 
 
-def create_model(max_num_cells, cell_state_dims, exploration_eps, key):
+def create_model(
+    max_num_cells,
+    cell_state_dims,
+    exploration_eps,
+    morse_well_width,
+    morse_well_depth,
+    key,
+):
     key1, key2, key3, key4, key5 = jax.random.split(key, 5)
 
     react_model = ReactModel(
@@ -33,6 +41,8 @@ def create_model(max_num_cells, cell_state_dims, exploration_eps, key):
         key=key4,
     )
 
+    mechanics_model = MechanicsModel(morse_well_width, morse_well_depth)
+
     model = Model(
         max_num_cells,
         cell_state_dims,
@@ -40,6 +50,7 @@ def create_model(max_num_cells, cell_state_dims, exploration_eps, key):
         move_model,
         split_prob_model,
         split_model,
+        mechanics_model,
         key=key5,
     )
     return model
@@ -214,6 +225,27 @@ class SplitModel(eqx.Module):
         return state_ratio, volume_ratio, division_plane
 
 
+class MechanicsModel(eqx.Module):
+    morse_well_width: jnp.float32
+    morse_well_depth: jnp.float32
+
+    def __init__(self, morse_well_width, morse_well_depth):
+        self.morse_well_width = jnp.float32(morse_well_width)
+        self.morse_well_depth = jnp.float32(morse_well_depth)
+
+    def __call__(self, cells: Cell):
+        # mask out inactive cells
+        active = cells.parent >= 0
+        position = morse_update(
+            cells.position,
+            cells.radius,
+            active,
+            well_width=self.morse_well_width,
+            well_depth=self.morse_well_depth,
+        )
+        return cells.replace(position=position)
+
+
 class Model(eqx.Module):
     max_num_cells: int
     cell_state_dims: int
@@ -222,6 +254,7 @@ class Model(eqx.Module):
     move_model: eqx.Module
     split_prob_model: eqx.Module
     split_model: eqx.Module
+    mechanics_model: eqx.Module
 
     def __init__(
         self,
@@ -231,6 +264,7 @@ class Model(eqx.Module):
         move_model,
         split_prob_model,
         split_model,
+        mechanics_model,
         key,
     ):
         self.max_num_cells = max_num_cells
@@ -242,6 +276,7 @@ class Model(eqx.Module):
         self.move_model = move_model
         self.split_prob_model = split_prob_model
         self.split_model = split_model
+        self.mechanics_model = mechanics_model
 
     def initialize_cells(self, key):
         key1, key2, key3 = jax.random.split(key, 3)

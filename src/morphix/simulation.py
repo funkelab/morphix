@@ -9,8 +9,12 @@ from .indexing import masks_to_indices
 from .models import Model, SplitModel
 
 
-def diffuse(cells: Cell) -> Cell:
-    # do nothing for now
+def interact(cells: Cell, model: Model) -> Cell:
+    # TODO: chemical reaction goes here
+
+    # mechanical update
+    cells = model.mechanics_model(cells)
+
     return cells
 
 
@@ -122,7 +126,7 @@ def simulation_step(cells: Cell, model: eqx.Module, key, debug: bool = False) ->
     cells = split_and_recombine(cells, model.split_model)
 
     # interact with the environment
-    cells = diffuse(cells)
+    cells = interact(cells, model)
 
     # update the cells internally
     cells = react(
