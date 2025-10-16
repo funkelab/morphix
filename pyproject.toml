@@ -15,7 +15,7 @@ authors = [
     { name = "Morgan Schwartz", email = "schwartzm10@janelia.hhmi.org" },
 ]
 dynamic = ["version"]
-dependencies = ["jax", "equinox", "optax"]
+dependencies = ["jax", "equinox", "optax", "rich"]
 
 [project.optional-dependencies]
 gui = ["pygfx", "pyqt5", "umap-learn"]
