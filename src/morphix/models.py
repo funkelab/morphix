@@ -51,9 +51,9 @@ def create_model(
     diffusion_model = DiffusionModel(
         diffusion_coefs=jnp.ones(num_molecules),
         degradation_rates=jnp.ones(num_molecules),
-        cell_state_dims=cell_state_dims,
-        hidden_dims=cell_state_dims * 2,
-        key=key6,
+    )
+    sensation_model = SensationModel(
+        cell_state_dims, num_molecules, hidden_dims=cell_state_dims * 2, key=key6
     )
 
     model = Model(
@@ -67,6 +67,7 @@ def create_model(
         mechanics_model=mechanics_model,
         secretion_model=secretion_model,
         diffusion_model=diffusion_model,
+        sensation_model=sensation_model,
         key=key7,
     )
     return model
@@ -293,22 +294,10 @@ class SecretionModel(eqx.Module):
 class DiffusionModel(eqx.Module):
     diffusion_coefs: jnp.array
     degradation_rates: jnp.array
-    layers: tuple
 
-    def __init__(
-        self, diffusion_coefs, degradation_rates, cell_state_dims, hidden_dims, key
-    ):
-        num_molecules = diffusion_coefs.shape[0]
+    def __init__(self, diffusion_coefs, degradation_rates):
         self.diffusion_coefs = diffusion_coefs
         self.degradation_rates = degradation_rates
-
-        key1, key2 = jax.random.split(key, 2)
-        self.layers = (
-            eqx.nn.Linear(cell_state_dims + num_molecules, hidden_dims, key=key1),
-            eqx.nn.LayerNorm(hidden_dims),
-            jax.nn.relu,
-            eqx.nn.Linear(hidden_dims, cell_state_dims, key=key2),
-        )
 
     def __call__(self, cells: Cell):
         active = cells.parent >= 0
@@ -320,9 +309,23 @@ class DiffusionModel(eqx.Module):
             self.degradation_rates,
             active,
         )
+        return cells.replace(concentration=concentrations)
 
-        state = jax.vmap(self.update_state)(cells.state, concentrations)
 
+class SensationModel(eqx.Module):
+    layers: tuple
+
+    def __init__(self, cell_state_dims, num_molecules, hidden_dims, key):
+        key1, key2 = jax.random.split(key, 2)
+        self.layers = (
+            eqx.nn.Linear(cell_state_dims + num_molecules, hidden_dims, key=key1),
+            eqx.nn.LayerNorm(hidden_dims),
+            jax.nn.relu,
+            eqx.nn.Linear(hidden_dims, cell_state_dims, key=key2),
+        )
+
+    def __call__(self, cells: Cell):
+        state = jax.vmap(self.update_state)(cells.state, cells.concentration)
         return cells.replace(state=state)
 
     def update_state(self, state, concentration):
@@ -344,6 +347,7 @@ class Model(eqx.Module):
     mechanics_model: MechanicsModel
     secretion_model: SecretionModel
     diffusion_model: DiffusionModel
+    sensation_model: SensationModel
 
     def __init__(
         self,
@@ -357,6 +361,7 @@ class Model(eqx.Module):
         mechanics_model,
         secretion_model,
         diffusion_model,
+        sensation_model,
         key,
     ):
         self.max_num_cells = max_num_cells
@@ -372,6 +377,7 @@ class Model(eqx.Module):
         self.mechanics_model = mechanics_model
         self.secretion_model = secretion_model
         self.diffusion_model = diffusion_model
+        self.sensation_model = sensation_model
 
     def initialize_cells(self, key):
         key1, key2, key3 = jax.random.split(key, 3)
@@ -396,6 +402,9 @@ class Model(eqx.Module):
             radius=jnp.ones((self.max_num_cells,), dtype=jnp.float32),
             state=cell_states,
             secretion=jnp.zeros(
+                (self.max_num_cells, self.num_molecules), dtype=jnp.float32
+            ),
+            concentration=jnp.zeros(
                 (self.max_num_cells, self.num_molecules), dtype=jnp.float32
             ),
             # initially, only one cell is active

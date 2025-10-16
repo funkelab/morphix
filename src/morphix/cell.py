@@ -8,6 +8,7 @@ class Cell(eqx.Module):
     radius: jax.Array
     state: jax.Array
     secretion: jax.Array
+    concentration: jax.Array
     parent: jax.Array  # -1 if not active, otherwise index into previous state
     p_split: jax.Array
     split: jax.Array

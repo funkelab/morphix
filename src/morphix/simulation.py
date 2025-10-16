@@ -13,8 +13,11 @@ def interact(cells: Cell, model: Model) -> Cell:
     # secrete molecules
     cells = model.secretion_model(cells)
 
-    # diffusion update
+    # diffuse molecules
     cells = model.diffusion_model(cells)
+
+    # sense and interact with molecules
+    cells = model.sensation_model(cells)
 
     # mechanical update
     cells = model.mechanics_model(cells)
