@@ -10,7 +10,11 @@ from .models import Model, SplitModel
 
 
 def interact(cells: Cell, model: Model) -> Cell:
-    # TODO: chemical reaction goes here
+    # secrete molecules
+    cells = model.secretion_model(cells)
+
+    # diffusion update
+    cells = model.diffusion_model(cells)
 
     # mechanical update
     cells = model.mechanics_model(cells)

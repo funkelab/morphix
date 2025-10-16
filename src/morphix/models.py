@@ -3,18 +3,20 @@ import jax
 import jax.numpy as jnp
 
 from .cell import Cell
+from .diffusion import steady_state_concentrations
 from .mechanics import morse_update
 
 
 def create_model(
     max_num_cells,
     cell_state_dims,
+    num_molecules,
     exploration_eps,
     morse_well_width,
     morse_well_depth,
     key,
 ):
-    key1, key2, key3, key4, key5 = jax.random.split(key, 5)
+    key1, key2, key3, key4, key5, key6, key7 = jax.random.split(key, 7)
 
     react_model = ReactModel(
         cell_state_dims,
@@ -43,15 +45,29 @@ def create_model(
 
     mechanics_model = MechanicsModel(morse_well_width, morse_well_depth)
 
+    secretion_model = SecretionModel(
+        num_molecules, cell_state_dims, cell_state_dims * 2, key5
+    )
+    diffusion_model = DiffusionModel(
+        diffusion_coefs=jnp.ones(num_molecules),
+        degradation_rates=jnp.ones(num_molecules),
+        cell_state_dims=cell_state_dims,
+        hidden_dims=cell_state_dims * 2,
+        key=key6,
+    )
+
     model = Model(
-        max_num_cells,
-        cell_state_dims,
-        react_model,
-        move_model,
-        split_prob_model,
-        split_model,
-        mechanics_model,
-        key=key5,
+        max_num_cells=max_num_cells,
+        cell_state_dims=cell_state_dims,
+        num_molecules=num_molecules,
+        react_model=react_model,
+        move_model=move_model,
+        split_prob_model=split_prob_model,
+        split_model=split_model,
+        mechanics_model=mechanics_model,
+        secretion_model=secretion_model,
+        diffusion_model=diffusion_model,
+        key=key7,
     )
     return model
 
@@ -246,29 +262,106 @@ class MechanicsModel(eqx.Module):
         return cells.replace(position=position)
 
 
+class SecretionModel(eqx.Module):
+    num_molecules: int
+    layers: tuple
+
+    def __init__(self, num_molecules: int, cell_state_dims: int, hidden_dims: int, key):
+        self.num_molecules = num_molecules
+
+        key1, key2 = jax.random.split(key, 2)
+        self.layers = (
+            eqx.nn.Linear(cell_state_dims, hidden_dims, key=key1),
+            eqx.nn.LayerNorm(hidden_dims),
+            jax.nn.relu,
+            eqx.nn.Linear(hidden_dims, num_molecules, key=key2),
+            # ensure that secretion values are positive
+            jax.nn.relu,
+        )
+
+    def __call__(self, cells: Cell):
+        secretion = jax.vmap(self.compute_secretion)(cells.state)
+        return cells.replace(secretion=secretion)
+
+    def compute_secretion(self, state):
+        x = state
+        for layer in self.layers:
+            x = layer(x)
+        return x
+
+
+class DiffusionModel(eqx.Module):
+    diffusion_coefs: jnp.array
+    degradation_rates: jnp.array
+    layers: tuple
+
+    def __init__(
+        self, diffusion_coefs, degradation_rates, cell_state_dims, hidden_dims, key
+    ):
+        num_molecules = diffusion_coefs.shape[0]
+        self.diffusion_coefs = diffusion_coefs
+        self.degradation_rates = degradation_rates
+
+        key1, key2 = jax.random.split(key, 2)
+        self.layers = (
+            eqx.nn.Linear(cell_state_dims + num_molecules, hidden_dims, key=key1),
+            eqx.nn.LayerNorm(hidden_dims),
+            jax.nn.relu,
+            eqx.nn.Linear(hidden_dims, cell_state_dims, key=key2),
+        )
+
+    def __call__(self, cells: Cell):
+        active = cells.parent >= 0
+        concentrations = steady_state_concentrations(
+            cells.position,
+            cells.radius,
+            cells.secretion,
+            self.diffusion_coefs,
+            self.degradation_rates,
+            active,
+        )
+
+        state = jax.vmap(self.update_state)(cells.state, concentrations)
+
+        return cells.replace(state=state)
+
+    def update_state(self, state, concentration):
+        x = jnp.concatenate((state, concentration))
+        for layer in self.layers:
+            x = layer(x)
+        return state + x
+
+
 class Model(eqx.Module):
     max_num_cells: int
     cell_state_dims: int
+    num_molecules: int
     initial_cell_states: jax.Array
-    react_model: eqx.Module
-    move_model: eqx.Module
-    split_prob_model: eqx.Module
-    split_model: eqx.Module
-    mechanics_model: eqx.Module
+    react_model: ReactModel
+    move_model: MoveModel
+    split_prob_model: SplitProbModel
+    split_model: SplitModel
+    mechanics_model: MechanicsModel
+    secretion_model: SecretionModel
+    diffusion_model: DiffusionModel
 
     def __init__(
         self,
         max_num_cells,
         cell_state_dims,
+        num_molecules,
         react_model,
         move_model,
         split_prob_model,
         split_model,
         mechanics_model,
+        secretion_model,
+        diffusion_model,
         key,
     ):
         self.max_num_cells = max_num_cells
         self.cell_state_dims = cell_state_dims
+        self.num_molecules = num_molecules
         self.initial_cell_states = jax.random.uniform(
             key=key, shape=(max_num_cells, cell_state_dims)
         )
@@ -277,6 +370,8 @@ class Model(eqx.Module):
         self.split_prob_model = split_prob_model
         self.split_model = split_model
         self.mechanics_model = mechanics_model
+        self.secretion_model = secretion_model
+        self.diffusion_model = diffusion_model
 
     def initialize_cells(self, key):
         key1, key2, key3 = jax.random.split(key, 3)
@@ -300,6 +395,9 @@ class Model(eqx.Module):
             position=position,
             radius=jnp.ones((self.max_num_cells,), dtype=jnp.float32),
             state=cell_states,
+            secretion=jnp.zeros(
+                (self.max_num_cells, self.num_molecules), dtype=jnp.float32
+            ),
             # initially, only one cell is active
             parent=(-jnp.ones((self.max_num_cells,), dtype=jnp.int16)).at[0].set(0),
             p_split=p_split,
