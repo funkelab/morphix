@@ -8,13 +8,13 @@ from .mechanics import morse_update
 
 
 def create_model(
+    key,
     max_num_cells,
     cell_state_dims,
     num_molecules,
-    exploration_eps,
-    morse_well_width,
-    morse_well_depth,
-    key,
+    exploration_eps=0.0,
+    morse_well_width=1.0,
+    morse_well_depth=1.0,
 ):
     key1, key2, key3, key4, key5, key6, key7 = jax.random.split(key, 7)
 
@@ -407,3 +407,11 @@ class Model(eqx.Module):
     def partition(self):
         """Partition the model into (parameters, static)."""
         return eqx.partition(self, eqx.is_inexact_array)
+
+    def hyperparameters(self):
+        """Return a dictionary of hyperparameters needed to create a similar model."""
+        return {
+            "max_num_cells": self.max_num_cells,
+            "cell_state_dims": self.cell_state_dims,
+            "num_molecules": self.num_molecules,
+        }

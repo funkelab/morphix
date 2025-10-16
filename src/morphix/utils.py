@@ -1,10 +1,13 @@
+import json
 import pickle
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 from rich import print as rprint
 
 from .cell import Cell
+from .models import create_model
 from .simulation import simulation_step
 
 
@@ -18,6 +21,25 @@ def load_lineage(filename):
     """Read a lineage from file."""
     with open(filename, "rb") as file:
         return pickle.load(file)
+
+
+def save_model(filename, model):
+    """Save a model to file."""
+    with open(filename, "wb") as file:
+        file.write((json.dumps(model.hyperparameters()) + "\n").encode())
+        eqx.tree_serialise_leaves(file, model)
+
+
+def load_model(filename):
+    """Read a model from file."""
+    key = jax.random.key(0)
+    with open(filename, "rb") as file:
+        hyperparameters = json.loads(file.readline().decode())
+        model_skeleton = create_model(
+            key=key,
+            **hyperparameters,
+        )
+        return eqx.tree_deserialise_leaves(file, model_skeleton)
 
 
 def print_color_values(
