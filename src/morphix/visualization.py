@@ -183,6 +183,8 @@ class LineageViewer(QWidget):
 
         cell_meshes = []
         parent_lines = []
+        move_lines = []
+        force_lines = []
 
         # draw each cell
         for i in range(num_cells):
@@ -219,11 +221,51 @@ class LineageViewer(QWidget):
                 geometry = gfx.Geometry()
                 buf = gfx.Buffer(segs)
                 geometry.positions = buf
-                material = gfx.LineMaterial(color=(0.8, 0.2, 0.2), thickness=2.0)
+                material = gfx.LineMaterial(
+                    color=(0.8, 0.2, 0.2), thickness=2.0, opacity=0.5
+                )
                 lines = gfx.Line(geometry, material)
                 parent_lines.append(lines)
 
-        objects = cell_meshes + parent_lines
+            # draw move and force lines (if logged)
+            if self.lineage.move is not None:
+                move_segs = []
+                force_segs = []
+                for i in range(num_cells):
+                    if not active[i]:
+                        continue
+                    move = self.lineage.move[t, i]
+                    force = self.lineage.mechanical_force[t, i]
+                    parent_index = int(parents[i])
+                    origin = prev_position[parent_index]
+                    move_segs.append(origin)
+                    move_segs.append(origin + move)
+                    move_segs.append([np.nan, np.nan, np.nan])
+                    force_segs.append(origin + move)
+                    force_segs.append(origin + move + force)
+                    force_segs.append([np.nan, np.nan, np.nan])
+                move_segs = np.asarray(move_segs, dtype=np.float32) + np.array(
+                    [0.5, 0, 0], dtype=np.float32
+                )
+                force_segs = np.asarray(force_segs, dtype=np.float32) + np.array(
+                    [1, 0, 0], dtype=np.float32
+                )
+                geometry = gfx.Geometry()
+                buf = gfx.Buffer(move_segs)
+                geometry.positions = buf
+                material = gfx.LineMaterial(
+                    color=(0.2, 0.8, 0.2), thickness=2.0, opacity=0.5
+                )
+                lines = gfx.Line(geometry, material)
+                move_lines.append(lines)
+                geometry = gfx.Geometry()
+                buf = gfx.Buffer(force_segs)
+                geometry.positions = buf
+                material = gfx.LineMaterial(color=(0.2, 0.2, 0.8), thickness=2.0)
+                lines = gfx.Line(geometry, material)
+                force_lines.append(lines)
+
+        objects = cell_meshes + parent_lines + move_lines + force_lines
         self.cached_objects[t] = objects
 
         return objects
