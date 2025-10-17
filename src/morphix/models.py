@@ -250,7 +250,7 @@ class MechanicsModel(eqx.Module):
         self.morse_well_width = jnp.float32(morse_well_width)
         self.morse_well_depth = jnp.float32(morse_well_depth)
 
-    def __call__(self, cells: Cell):
+    def __call__(self, cells: Cell, extended_attributes: bool = False):
         # mask out inactive cells
         active = cells.parent >= 0
         position = cells.position
@@ -262,7 +262,10 @@ class MechanicsModel(eqx.Module):
             well_depth=self.morse_well_depth,
         )
         position += force
-        return cells.replace(position=position)
+        if extended_attributes:
+            return cells.replace(position=position, mechanical_force=force)
+        else:
+            return cells.replace(position=position)
 
 
 class SecretionModel(eqx.Module):
@@ -381,7 +384,7 @@ class Model(eqx.Module):
         self.diffusion_model = diffusion_model
         self.sensation_model = sensation_model
 
-    def initialize_cells(self, key):
+    def initialize_cells(self, key, extended_attributes=False):
         key1, key2, key3 = jax.random.split(key, 3)
         keys = jax.random.split(key1, self.max_num_cells)
 
@@ -398,6 +401,17 @@ class Model(eqx.Module):
         p_split = jax.vmap(self.split_prob_model)(cell_states, keys)
         split = self.split_prob_model.sample(p_split, key=key3)
 
+        if extended_attributes:
+            extended_attrs = {
+                "move": position,
+                "mechanical_force": jnp.zeros(
+                    (self.max_num_cells, self.move_model.spatial_dims),
+                    dtype=jnp.float32,
+                ),
+            }
+        else:
+            extended_attrs = {}
+
         return Cell(
             log_p_move=log_p_move,
             position=position,
@@ -413,6 +427,7 @@ class Model(eqx.Module):
             parent=(-jnp.ones((self.max_num_cells,), dtype=jnp.int16)).at[0].set(0),
             p_split=p_split,
             split=split,
+            **extended_attrs,
         )
 
     def partition(self):

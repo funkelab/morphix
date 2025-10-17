@@ -13,6 +13,10 @@ class Cell(eqx.Module):
     p_split: jax.Array
     split: jax.Array
 
+    # extended attributes
+    move: jax.Array = None
+    mechanical_force: jax.Array = None
+
     def replace(
         self,
         **kwargs,
