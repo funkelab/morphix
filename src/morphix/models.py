@@ -4,7 +4,7 @@ import jax.numpy as jnp
 
 from .cell import Cell
 from .diffusion import steady_state_concentrations
-from .mechanics import morse_update
+from .mechanics import morse_force
 
 
 def create_model(
@@ -253,13 +253,15 @@ class MechanicsModel(eqx.Module):
     def __call__(self, cells: Cell):
         # mask out inactive cells
         active = cells.parent >= 0
-        position = morse_update(
-            cells.position,
+        position = cells.position
+        force = morse_force(
+            position,
             cells.radius,
             active,
             well_width=self.morse_well_width,
             well_depth=self.morse_well_depth,
         )
+        position += force
         return cells.replace(position=position)
 
 

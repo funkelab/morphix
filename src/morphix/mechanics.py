@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 
 
-def morse_update(positions, radii, active, well_width, well_depth):
+def morse_force(positions, radii, active, well_width, well_depth):
     def potential_function(p):
         # we are only interested in the upper triangular pairs
         trui_indices = jnp.triu_indices(p.shape[0], k=1)
@@ -38,4 +38,4 @@ def morse_update(positions, radii, active, well_width, well_depth):
     # forces are negative gradients of potential function
     forces = -grad
 
-    return positions + forces
+    return forces
