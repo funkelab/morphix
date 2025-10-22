@@ -423,12 +423,19 @@ class Model(eqx.Module):
                     (self.max_num_cells, self.move_model.spatial_dims),
                     dtype=jnp.float32,
                 ),
+                # filled in below
                 "move": empty,
+                "volume_ratio": jnp.zeros((self.max_num_cells,), dtype=jnp.float32),
+                "division_plane": jnp.zeros(
+                    (self.max_num_cells, self.move_model.spatial_dims),
+                    dtype=jnp.float32,
+                ),
             }
         else:
             extended_attrs = {}
 
         cells = Cell(
+            # filled in below
             log_p_move=empty,
             position=jnp.zeros(
                 (self.max_num_cells, self.move_model.spatial_dims), dtype=jnp.float32
@@ -443,7 +450,9 @@ class Model(eqx.Module):
             ),
             # initially, only one cell is active
             parent=(-jnp.ones((self.max_num_cells,), dtype=jnp.int16)).at[0].set(0),
+            # filled in below
             p_split=empty,
+            # filled in below
             split=empty,
             **extended_attrs,
         )

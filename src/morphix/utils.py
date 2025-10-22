@@ -52,6 +52,8 @@ def print_color_values(
     to_color=(200, 200, 200),
 ):
     """Print (array) values with a color depending on the value."""
+    if values is None:
+        return
     is_array = True
     truncated = False
     if isinstance(values, jax.Array) and len(values.shape) > 0:
@@ -115,6 +117,30 @@ def print_cells(cells: Cell):
                     cell.radius,
                 )
                 print_color_values(
+                    "\tmove       : ",
+                    cell.move,
+                    min=-1.0,
+                    max=1.0,
+                )
+                print_color_values(
+                    "\tforces     : ",
+                    cell.mechanical_force,
+                    min=-1.0,
+                    max=1.0,
+                )
+                print_color_values(
+                    "\tvol ratio  : ",
+                    cell.volume_ratio,
+                    min=-1.0,
+                    max=1.0,
+                )
+                print_color_values(
+                    "\tdiv plane  : ",
+                    cell.division_plane,
+                    min=-1.0,
+                    max=1.0,
+                )
+                print_color_values(
                     "\tstate      : ",
                     cell.state,
                     min=min_state,
@@ -162,11 +188,11 @@ def print_cells(cells: Cell):
 def print_simulation(model, num_timesteps, key):
     """Run a simulation and pretty-print each timestep."""
     subkey, key = jax.random.split(key, 2)
-    cells = model.initialize_cells(subkey)
+    cells = model.initialize_cells(subkey, extended_attributes=True)
     print()
     print()
     for t in range(min(num_timesteps, 10)):
         print(f"{t=}:")
         print_cells(cells)
         subkey, key = jax.random.split(key, 2)
-        cells = simulation_step(cells, model, subkey)
+        cells = simulation_step(cells, model, subkey, extended_attributes=True)

@@ -16,6 +16,8 @@ class Cell(eqx.Module):
     # extended attributes
     move: jax.Array = None
     mechanical_force: jax.Array = None
+    volume_ratio: jax.Array = None
+    division_plane: jax.Array = None
 
     @property
     def num_cells(self):

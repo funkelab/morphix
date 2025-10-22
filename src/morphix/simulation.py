@@ -39,7 +39,7 @@ def simulation_step(
     cells: Cell, model: eqx.Module, key, extended_attributes: bool = False
 ) -> Cell:
     # perform split (as indicated from previous timestep)
-    cells = split_and_recombine(cells, model.split_model)
+    cells = split_and_recombine(cells, model.split_model, extended_attributes)
 
     # interact with the environment
     cells = interact(cells, model, extended_attributes)
@@ -55,7 +55,9 @@ def simulation_step(
     return cells
 
 
-def split_and_recombine(cells: Cell, split_model: SplitModel) -> Cell:
+def split_and_recombine(
+    cells: Cell, split_model: SplitModel, extended_attributes=False
+) -> Cell:
     # total number of cells (including inactive)
     num_cells = len(cells.parent)
 
@@ -67,8 +69,10 @@ def split_and_recombine(cells: Cell, split_model: SplitModel) -> Cell:
     cells = cells.replace(parent=parent_indices)
 
     # split all cells
-    daughters_a, daughters_b = jax.vmap(split_cell, in_axes=(0, None))(
-        cells, split_model
+    daughters_a, daughters_b = jax.vmap(split_cell, in_axes=(0, None, None))(
+        cells,
+        split_model,
+        extended_attributes,
     )
 
     # figure out which cells to keep
@@ -119,7 +123,7 @@ def react(
     return cells
 
 
-def split_cell(cell: Cell, split_model: SplitModel):
+def split_cell(cell: Cell, split_model: SplitModel, extended_attributes=False):
     state_ratio, volume_ratio, division_plane = split_model(cell.state)
 
     daughter_a_state = state_ratio * cell.state
@@ -136,6 +140,12 @@ def split_cell(cell: Cell, split_model: SplitModel):
     # plane vector, proportional to their radius
     daughter_a_position = cell.position + division_plane * daughter_a_radius
     daughter_b_position = cell.position - division_plane * daughter_b_radius
+
+    if extended_attributes:
+        cell = cell.replace(
+            volume_ratio=volume_ratio,
+            division_plane=division_plane,
+        )
 
     daughter_a = cell.replace(
         state=daughter_a_state,
