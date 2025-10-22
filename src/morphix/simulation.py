@@ -105,45 +105,18 @@ def react(
     key,
     extended_attributes: bool = False,
 ) -> Cell:
-    key1, key2, key3 = jax.random.split(key, 3)
-    num_cells = cells.state.shape[0]
+    key1, key2 = jax.random.split(key, 2)
 
     # update cell state
-    state = jax.vmap(model.react_model)(cells.state)
+    cells = model.react_model(cells, extended_attributes)
 
     # update positions
-    mean, std = jax.vmap(model.move_model)(cells.state)
-    keys = jax.random.split(key1, num_cells)
-    move, log_p_move = jax.vmap(
-        lambda m, v, k: model.move_model.sample(m, v, k, return_log_p=True)
-    )(mean, std, keys)
-    position = cells.position + move
+    cells = model.move_model(cells, key1, extended_attributes)
 
-    # ask split model for split probabilities
-    keys = jax.random.split(key2, num_cells)
-    p_split = jax.vmap(model.split_prob_model)(state, keys)
+    # compute split probabilities and sample an action
+    cells = model.split_prob_model(cells, key2, extended_attributes)
 
-    # sample an action (split or not)
-    split = model.split_prob_model.sample(p_split, key3)
-
-    # update cells
-    if extended_attributes:
-        return cells.replace(
-            log_p_move=log_p_move,
-            position=position,
-            state=state,
-            p_split=p_split,
-            split=split,
-            move=move,
-        )
-    else:
-        return cells.replace(
-            log_p_move=log_p_move,
-            position=position,
-            state=state,
-            p_split=p_split,
-            split=split,
-        )
+    return cells
 
 
 def split_cell(cell: Cell, split_model: SplitModel):

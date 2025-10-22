@@ -17,6 +17,13 @@ class Cell(eqx.Module):
     move: jax.Array = None
     mechanical_force: jax.Array = None
 
+    @property
+    def num_cells(self):
+        if len(self.parent.shape) == 0:
+            return None
+        else:
+            return self.parent.shape[-1]
+
     def replace(
         self,
         **kwargs,

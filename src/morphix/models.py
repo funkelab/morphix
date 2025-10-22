@@ -86,7 +86,11 @@ class ReactModel(eqx.Module):
             jax.nn.sigmoid,
         )
 
-    def __call__(self, cell_state: jax.Array):
+    def __call__(self, cells: Cell, extended_attributes: bool = False):
+        state = jax.vmap(self.update_state)(cells.state)
+        return cells.replace(state=state)
+
+    def update_state(self, cell_state: jax.Array):
         x = cell_state
         for layer in self.layers:
             x = layer(x)
@@ -108,7 +112,20 @@ class MoveModel(eqx.Module):
             eqx.nn.Linear(hidden_dims, spatial_dims * 2, key=key2),
         )
 
-    def __call__(self, cell_state: jax.Array):
+    def __call__(self, cells, key, extended_attributes: bool = False):
+        mean, std = jax.vmap(self.move_distribution)(cells.state)
+        keys = jax.random.split(key, cells.num_cells)
+        move, log_p_move = jax.vmap(
+            lambda m, v, k: self.sample(m, v, k, return_log_p=True)
+        )(mean, std, keys)
+        position = cells.position + move
+
+        if extended_attributes:
+            cells = cells.replace(move=move)
+
+        return cells.replace(position=position, log_p_move=log_p_move)
+
+    def move_distribution(self, cell_state: jax.Array):
         x = cell_state
         for layer in self.layers:
             x = layer(x)
@@ -169,7 +186,19 @@ class SplitProbModel(eqx.Module):
             jax.nn.sigmoid,
         )
 
-    def __call__(self, cell_state: jax.Array, key):
+    def __call__(self, cells: Cell, key, extended_attributes: bool = False):
+        key1, key2 = jax.random.split(key)
+
+        # compute split probabilities
+        keys = jax.random.split(key1, cells.num_cells)
+        p_split = jax.vmap(self.split_probs)(cells.state, keys)
+
+        # sample an action (split or not)
+        split = self.sample(p_split, key2)
+
+        return cells.replace(p_split=p_split, split=split)
+
+    def split_probs(self, cell_state: jax.Array, key):
         x = cell_state
         for layer in self.layers:
             x = layer(x)
@@ -385,38 +414,27 @@ class Model(eqx.Module):
         self.sensation_model = sensation_model
 
     def initialize_cells(self, key, extended_attributes=False):
-        key1, key2, key3 = jax.random.split(key, 3)
-        keys = jax.random.split(key1, self.max_num_cells)
-
-        cell_states = self.initial_cell_states
-
-        # initial positions
-        mean, std = jax.vmap(self.move_model)(cell_states)
-        keys = jax.random.split(key2, self.max_num_cells)
-        position, log_p_move = jax.vmap(
-            lambda m, v, k: self.move_model.sample(m, v, k, return_log_p=True)
-        )(mean, std, keys)
-
-        # initial split decisions
-        p_split = jax.vmap(self.split_prob_model)(cell_states, keys)
-        split = self.split_prob_model.sample(p_split, key=key3)
+        key1, key2 = jax.random.split(key, 2)
+        empty = jnp.zeros((), dtype=jnp.float32)
 
         if extended_attributes:
             extended_attrs = {
-                "move": position,
                 "mechanical_force": jnp.zeros(
                     (self.max_num_cells, self.move_model.spatial_dims),
                     dtype=jnp.float32,
                 ),
+                "move": empty,
             }
         else:
             extended_attrs = {}
 
-        return Cell(
-            log_p_move=log_p_move,
-            position=position,
+        cells = Cell(
+            log_p_move=empty,
+            position=jnp.zeros(
+                (self.max_num_cells, self.move_model.spatial_dims), dtype=jnp.float32
+            ),
             radius=jnp.ones((self.max_num_cells,), dtype=jnp.float32),
-            state=cell_states,
+            state=self.initial_cell_states,
             secretion=jnp.zeros(
                 (self.max_num_cells, self.num_molecules), dtype=jnp.float32
             ),
@@ -425,10 +443,18 @@ class Model(eqx.Module):
             ),
             # initially, only one cell is active
             parent=(-jnp.ones((self.max_num_cells,), dtype=jnp.int16)).at[0].set(0),
-            p_split=p_split,
-            split=split,
+            p_split=empty,
+            split=empty,
             **extended_attrs,
         )
+
+        # initial positions
+        cells = self.move_model(cells, key1, extended_attributes)
+
+        # initial split decisions
+        cells = self.split_prob_model(cells, key2, extended_attributes)
+
+        return cells
 
     def partition(self):
         """Partition the model into (parameters, static)."""
