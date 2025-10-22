@@ -160,7 +160,7 @@ class SplitProbModel(eqx.Module):
                 used to incentivise exploration during learning.
         """
         key1, key2 = jax.random.split(key, 2)
-        self.eps = eps
+        self.eps = float(eps)
         self.layers = (
             eqx.nn.Linear(cell_state_dims, hidden_dims, key=key1),
             eqx.nn.LayerNorm(hidden_dims),
@@ -243,12 +243,12 @@ class SplitModel(eqx.Module):
 
 
 class MechanicsModel(eqx.Module):
-    morse_well_width: jnp.float32
-    morse_well_depth: jnp.float32
+    morse_well_width: float
+    morse_well_depth: float
 
     def __init__(self, morse_well_width, morse_well_depth):
-        self.morse_well_width = jnp.float32(morse_well_width)
-        self.morse_well_depth = jnp.float32(morse_well_depth)
+        self.morse_well_width = float(morse_well_width)
+        self.morse_well_depth = float(morse_well_depth)
 
     def __call__(self, cells: Cell, extended_attributes: bool = False):
         # mask out inactive cells
