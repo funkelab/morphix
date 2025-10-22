@@ -61,15 +61,27 @@ def simulation_loss(
     trajectory = simulate(model, num_timesteps, key, debug)
 
     # compute the loss
-    return trajectory_loss(trajectory, reward_function, weight_position, debug)
+    return trajectory_loss(
+        trajectory,
+        reward_function,
+        model.delta_t,
+        weight_position,
+        debug,
+    )
 
 
 def trajectory_loss(
-    cells: Cell, reward_function, weight_position: float = 1.0, debug: bool = False
+    cells: Cell,
+    reward_function,
+    delta_t,
+    weight_position: float = 1.0,
+    debug: bool = False,
 ):
     """Compute the loss for an entire trajectory."""
     # (t, n)
-    rewards_lineage, rewards_position = trajectory_rewards(cells, reward_function)
+    rewards_lineage, rewards_position = trajectory_rewards(
+        cells, reward_function, delta_t
+    )
 
     # compute log probabilities of each action taken
     # p_action: (t, n)
@@ -77,8 +89,8 @@ def trajectory_loss(
     # log_p_action: (t, n)
     log_p_action = jnp.log(p_action)
 
-    # add log prob of movement
-    log_p_move = cells.log_p_move
+    # add log prob of motility
+    log_p_motility = cells.log_p_motility
 
     # compute "reward-to-go" for each timestep and cell, i.e., sum of future
     # rewards rewards_to_go: (t, n)
@@ -92,7 +104,7 @@ def trajectory_loss(
         jax.debug.print("p_split: {}", cells.p_split)
         jax.debug.print("p_action: {}", p_action)
         jax.debug.print("log_p_action: {}", log_p_action)
-        jax.debug.print("log_p_move: {}", log_p_move)
+        jax.debug.print("log_p_motility: {}", log_p_motility)
 
     # zero-out rewards for inactive cells
     active = cells.parent >= 0
@@ -101,7 +113,7 @@ def trajectory_loss(
 
     # per-cell losses: (t, n)
     losses_lineage = -log_p_action * rewards_lineage_to_go
-    losses_position = -log_p_move * rewards_position_to_go
+    losses_position = -log_p_motility * rewards_position_to_go
     losses = losses_lineage + weight_position * losses_position
 
     if debug:
@@ -110,7 +122,7 @@ def trajectory_loss(
     return losses.sum()
 
 
-def trajectory_rewards(cells: Cell, reward_function):
+def trajectory_rewards(cells: Cell, reward_function, delta_t):
     """Compute the rewards of each timestep of an entire trajectory."""
     num_timesteps = cells.state.shape[0]
-    return jax.vmap(reward_function)(cells, jnp.arange(num_timesteps))
+    return jax.vmap(reward_function)(cells, jnp.arange(num_timesteps) * delta_t)

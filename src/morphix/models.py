@@ -12,6 +12,7 @@ def create_model(
     max_num_cells,
     cell_state_dims,
     num_molecules,
+    delta_t,
     exploration_eps=0.0,
     morse_well_width=1.0,
     morse_well_depth=1.0,
@@ -23,7 +24,7 @@ def create_model(
         cell_state_dims * 2,
         key=key1,
     )
-    move_model = MoveModel(
+    motility_model = MotilityModel(
         cell_state_dims,
         cell_state_dims * 2,
         3,
@@ -60,8 +61,9 @@ def create_model(
         max_num_cells=max_num_cells,
         cell_state_dims=cell_state_dims,
         num_molecules=num_molecules,
+        delta_t=delta_t,
         react_model=react_model,
-        move_model=move_model,
+        motility_model=motility_model,
         split_prob_model=split_prob_model,
         split_model=split_model,
         mechanics_model=mechanics_model,
@@ -97,7 +99,7 @@ class ReactModel(eqx.Module):
         return cell_state + x
 
 
-class MoveModel(eqx.Module):
+class MotilityModel(eqx.Module):
     layers: tuple
     spatial_dims: int
 
@@ -113,19 +115,18 @@ class MoveModel(eqx.Module):
         )
 
     def __call__(self, cells, key, extended_attributes: bool = False):
-        mean, std = jax.vmap(self.move_distribution)(cells.state)
+        mean, std = jax.vmap(self.motility_force_distribution)(cells.state)
         keys = jax.random.split(key, cells.num_cells)
-        move, log_p_move = jax.vmap(
+        motility_force, log_p_motility = jax.vmap(
             lambda m, v, k: self.sample(m, v, k, return_log_p=True)
         )(mean, std, keys)
-        position = cells.position + move
 
-        if extended_attributes:
-            cells = cells.replace(move=move)
+        return cells.replace(
+            motility_force=motility_force,
+            log_p_motility=log_p_motility,
+        )
 
-        return cells.replace(position=position, log_p_move=log_p_move)
-
-    def move_distribution(self, cell_state: jax.Array):
+    def motility_force_distribution(self, cell_state: jax.Array):
         x = cell_state
         for layer in self.layers:
             x = layer(x)
@@ -135,14 +136,14 @@ class MoveModel(eqx.Module):
         return mean, std
 
     def sample(self, mean, std, key, return_log_p=False):
-        move = mean + std * jax.random.normal(key, shape=mean.shape)
+        motility_force = mean + std * jax.random.normal(key, shape=mean.shape)
         if not return_log_p:
-            return move
+            return motility_force
         var = std**2
-        log_p_move = (
-            -0.5 * (jnp.log(2 * jnp.pi * var) + ((move - mean) ** 2) / var)
+        log_p_motility = (
+            -0.5 * (jnp.log(2 * jnp.pi * var) + ((motility_force - mean) ** 2) / var)
         ).sum(axis=-1)
-        return move, log_p_move
+        return motility_force, log_p_motility
 
 
 class SplitProbModel(eqx.Module):
@@ -282,19 +283,14 @@ class MechanicsModel(eqx.Module):
     def __call__(self, cells: Cell, extended_attributes: bool = False):
         # mask out inactive cells
         active = cells.parent >= 0
-        position = cells.position
         force = morse_force(
-            position,
+            cells.position,
             cells.radius,
             active,
             well_width=self.morse_well_width,
             well_depth=self.morse_well_depth,
         )
-        position += force
-        if extended_attributes:
-            return cells.replace(position=position, mechanical_force=force)
-        else:
-            return cells.replace(position=position)
+        return cells.replace(mechanical_force=force)
 
 
 class SecretionModel(eqx.Module):
@@ -373,9 +369,10 @@ class Model(eqx.Module):
     max_num_cells: int
     cell_state_dims: int
     num_molecules: int
+    delta_t: float
     initial_cell_states: jax.Array
     react_model: ReactModel
-    move_model: MoveModel
+    motility_model: MotilityModel
     split_prob_model: SplitProbModel
     split_model: SplitModel
     mechanics_model: MechanicsModel
@@ -388,8 +385,9 @@ class Model(eqx.Module):
         max_num_cells,
         cell_state_dims,
         num_molecules,
+        delta_t,
         react_model,
-        move_model,
+        motility_model,
         split_prob_model,
         split_model,
         mechanics_model,
@@ -401,11 +399,12 @@ class Model(eqx.Module):
         self.max_num_cells = max_num_cells
         self.cell_state_dims = cell_state_dims
         self.num_molecules = num_molecules
+        self.delta_t = float(delta_t)
         self.initial_cell_states = jax.random.uniform(
             key=key, shape=(max_num_cells, cell_state_dims)
         )
         self.react_model = react_model
-        self.move_model = move_model
+        self.motility_model = motility_model
         self.split_prob_model = split_prob_model
         self.split_model = split_model
         self.mechanics_model = mechanics_model
@@ -419,15 +418,9 @@ class Model(eqx.Module):
 
         if extended_attributes:
             extended_attrs = {
-                "mechanical_force": jnp.zeros(
-                    (self.max_num_cells, self.move_model.spatial_dims),
-                    dtype=jnp.float32,
-                ),
-                # filled in below
-                "move": empty,
                 "volume_ratio": jnp.zeros((self.max_num_cells,), dtype=jnp.float32),
                 "division_plane": jnp.zeros(
-                    (self.max_num_cells, self.move_model.spatial_dims),
+                    (self.max_num_cells, self.motility_model.spatial_dims),
                     dtype=jnp.float32,
                 ),
             }
@@ -436,9 +429,10 @@ class Model(eqx.Module):
 
         cells = Cell(
             # filled in below
-            log_p_move=empty,
+            log_p_motility=empty,
             position=jnp.zeros(
-                (self.max_num_cells, self.move_model.spatial_dims), dtype=jnp.float32
+                (self.max_num_cells, self.motility_model.spatial_dims),
+                dtype=jnp.float32,
             ),
             radius=jnp.ones((self.max_num_cells,), dtype=jnp.float32),
             state=self.initial_cell_states,
@@ -454,11 +448,19 @@ class Model(eqx.Module):
             p_split=empty,
             # filled in below
             split=empty,
+            motility_force=jnp.zeros(
+                (self.max_num_cells, self.motility_model.spatial_dims),
+                dtype=jnp.float32,
+            ),
+            mechanical_force=jnp.zeros(
+                (self.max_num_cells, self.motility_model.spatial_dims),
+                dtype=jnp.float32,
+            ),
             **extended_attrs,
         )
 
         # initial positions
-        cells = self.move_model(cells, key1, extended_attributes)
+        cells = self.motility_model(cells, key1, extended_attributes)
 
         # initial split decisions
         cells = self.split_prob_model(cells, key2, extended_attributes)
@@ -475,4 +477,5 @@ class Model(eqx.Module):
             "max_num_cells": self.max_num_cells,
             "cell_state_dims": self.cell_state_dims,
             "num_molecules": self.num_molecules,
+            "delta_t": self.delta_t,
         }

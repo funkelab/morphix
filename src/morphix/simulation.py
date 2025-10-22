@@ -52,6 +52,10 @@ def simulation_step(
         extended_attributes,
     )
 
+    # apply forces to update cell positions
+    forces = cells.motility_force + cells.mechanical_force
+    cells = cells.replace(position=cells.position + model.delta_t * forces)
+
     return cells
 
 
@@ -114,8 +118,8 @@ def react(
     # update cell state
     cells = model.react_model(cells, extended_attributes)
 
-    # update positions
-    cells = model.move_model(cells, key1, extended_attributes)
+    # calculate motility forces
+    cells = model.motility_model(cells, key1, extended_attributes)
 
     # compute split probabilities and sample an action
     cells = model.split_prob_model(cells, key2, extended_attributes)

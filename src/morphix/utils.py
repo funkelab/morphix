@@ -117,13 +117,13 @@ def print_cells(cells: Cell):
                     cell.radius,
                 )
                 print_color_values(
-                    "\tmove       : ",
-                    cell.move,
+                    "\tmot. force : ",
+                    cell.motility_force,
                     min=-1.0,
                     max=1.0,
                 )
                 print_color_values(
-                    "\tforces     : ",
+                    "\tmec. force : ",
                     cell.mechanical_force,
                     min=-1.0,
                     max=1.0,

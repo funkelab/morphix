@@ -3,7 +3,7 @@ import jax
 
 
 class Cell(eqx.Module):
-    log_p_move: jax.Array
+    log_p_motility: jax.Array
     position: jax.Array
     radius: jax.Array
     state: jax.Array
@@ -12,10 +12,10 @@ class Cell(eqx.Module):
     parent: jax.Array  # -1 if not active, otherwise index into previous state
     p_split: jax.Array
     split: jax.Array
+    motility_force: jax.Array
+    mechanical_force: jax.Array
 
     # extended attributes
-    move: jax.Array = None
-    mechanical_force: jax.Array = None
     volume_ratio: jax.Array = None
     division_plane: jax.Array = None
 

@@ -24,10 +24,11 @@ except ImportError as e:
 
 
 class LineageViewer(QWidget):
-    def __init__(self, lineage, inactive_cell_opacity=0.01, parent=None):
+    def __init__(self, lineage, delta_t, inactive_cell_opacity=0.01, parent=None):
         super().__init__(parent)
         self.lineage = lineage
         self.n_timesteps = lineage.position.shape[0]
+        self.delta_t = delta_t
         self.current_t = 0
         self.playing = False
         self.inactive_cell_opacity = inactive_cell_opacity
@@ -183,8 +184,8 @@ class LineageViewer(QWidget):
 
         cell_meshes = []
         parent_lines = []
-        move_lines = []
-        force_lines = []
+        motility_force_lines = []
+        mechanical_force_lines = []
 
         # draw each cell
         for i in range(num_cells):
@@ -227,53 +228,55 @@ class LineageViewer(QWidget):
                 lines = gfx.Line(geometry, material)
                 parent_lines.append(lines)
 
-            # draw move and force lines (if logged)
-            if self.lineage.move is not None:
-                move_segs = []
-                force_segs = []
+            # draw force lines
+            if self.lineage.motility_force is not None:
+                motility_segs = []
+                mechanical_segs = []
                 for i in range(num_cells):
                     if not active[i]:
                         continue
-                    move = self.lineage.move[t, i]
-                    force = self.lineage.mechanical_force[t, i]
+                    motility = self.lineage.motility_force[t, i] * self.delta_t
+                    mechanical = self.lineage.mechanical_force[t, i] * self.delta_t
                     parent_index = int(parents[i])
                     origin = prev_position[parent_index]
-                    move_segs.append(origin)
-                    move_segs.append(origin + move)
-                    move_segs.append([np.nan, np.nan, np.nan])
-                    force_segs.append(origin + move)
-                    force_segs.append(origin + move + force)
-                    force_segs.append([np.nan, np.nan, np.nan])
-                move_segs = np.asarray(move_segs, dtype=np.float32) + np.array(
+                    motility_segs.append(origin)
+                    motility_segs.append(origin + motility)
+                    motility_segs.append([np.nan, np.nan, np.nan])
+                    mechanical_segs.append(origin)
+                    mechanical_segs.append(origin + mechanical)
+                    mechanical_segs.append([np.nan, np.nan, np.nan])
+                motility_segs = np.asarray(motility_segs, dtype=np.float32) + np.array(
                     [0.5, 0, 0], dtype=np.float32
                 )
-                force_segs = np.asarray(force_segs, dtype=np.float32) + np.array(
-                    [1, 0, 0], dtype=np.float32
-                )
+                mechanical_segs = np.asarray(
+                    mechanical_segs, dtype=np.float32
+                ) + np.array([1, 0, 0], dtype=np.float32)
                 geometry = gfx.Geometry()
-                buf = gfx.Buffer(move_segs)
+                buf = gfx.Buffer(motility_segs)
                 geometry.positions = buf
                 material = gfx.LineMaterial(
                     color=(0.2, 0.8, 0.2), thickness=2.0, opacity=0.5
                 )
                 lines = gfx.Line(geometry, material)
-                move_lines.append(lines)
+                motility_force_lines.append(lines)
                 geometry = gfx.Geometry()
-                buf = gfx.Buffer(force_segs)
+                buf = gfx.Buffer(mechanical_segs)
                 geometry.positions = buf
                 material = gfx.LineMaterial(color=(0.2, 0.2, 0.8), thickness=2.0)
                 lines = gfx.Line(geometry, material)
-                force_lines.append(lines)
+                mechanical_force_lines.append(lines)
 
-        objects = cell_meshes + parent_lines + move_lines + force_lines
+        objects = (
+            cell_meshes + parent_lines + motility_force_lines + mechanical_force_lines
+        )
         self.cached_objects[t] = objects
 
         return objects
 
 
-def show_lineage(lineage, inactive_cell_opacity=0.01):
+def show_lineage(lineage, delta_t=1.0, inactive_cell_opacity=0.01):
     app = QApplication(sys.argv)
-    win = LineageViewer(lineage, inactive_cell_opacity=inactive_cell_opacity)
+    win = LineageViewer(lineage, delta_t, inactive_cell_opacity=inactive_cell_opacity)
     win.setWindowTitle("morphix lineage viewer")
     win.resize(1200, 800)
     win.show()
