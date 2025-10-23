@@ -27,7 +27,6 @@ def train_step(
     optimizer,
     opt_state,
     key,
-    weight_position: float = 1.0,
     debug: bool = False,
 ):
     """Perform a single training step."""
@@ -36,9 +35,7 @@ def train_step(
     @jax.value_and_grad
     def loss_fn(params, static, key):
         model = eqx.combine(params, static)
-        return simulation_loss(
-            model, reward_function, num_timesteps, key, weight_position, debug
-        )
+        return simulation_loss(model, reward_function, num_timesteps, key, debug)
 
     loss, grad = loss_fn(params, static, key)
 
@@ -53,7 +50,6 @@ def simulation_loss(
     reward_function,
     num_timesteps: int,
     key,
-    weight_position: float = 1.0,
     debug: bool = False,
 ) -> float:
     """Run the simulation and compute the loss for the given reward function."""
@@ -65,7 +61,6 @@ def simulation_loss(
         trajectory,
         reward_function,
         model.delta_t,
-        weight_position,
         debug,
     )
 
@@ -74,7 +69,6 @@ def trajectory_loss(
     cells: Cell,
     reward_function,
     delta_t,
-    weight_position: float = 1.0,
     debug: bool = False,
 ):
     """Compute the loss for an entire trajectory."""
@@ -114,7 +108,7 @@ def trajectory_loss(
     # per-cell losses: (t, n)
     losses_lineage = -log_p_action * rewards_lineage_to_go
     losses_position = -log_p_motility * rewards_position_to_go
-    losses = losses_lineage + weight_position * losses_position
+    losses = losses_lineage + losses_position
 
     if debug:
         jax.debug.print("per-cell losses: {}", losses)
