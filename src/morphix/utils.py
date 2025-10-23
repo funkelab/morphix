@@ -66,7 +66,7 @@ def print_color_values(
         values = values[:max_elements]
     if max - min < 1e-4:
         max = min + 1.0
-    print(prefix, end="")
+    rprint(prefix, end="")
     if is_array:
         print("[", end="")
 
@@ -89,7 +89,7 @@ def print_color_values(
     print()
 
 
-def print_cells(cells: Cell):
+def print_cells(cells: Cell, i=None, limit=None):
     """Pretty print cells."""
     dims = len(cells.parent.shape)
 
@@ -105,9 +105,13 @@ def print_cells(cells: Cell):
     with jnp.printoptions(precision=2, floatmode="fixed", threshold=3, suppress=True):
 
         def print_callback(cell):
+            if i is not None:
+                cell_id = f" {i}"
+            else:
+                cell_id = ""
             if cell.parent >= 0:
                 print_color_values(
-                    "Cell at ",
+                    f"Cell{cell_id} at ",
                     cell.position,
                     min=min_pos,
                     max=max_pos,
@@ -179,20 +183,22 @@ def print_cells(cells: Cell):
             jax.debug.callback(print_callback, cells)
         else:
             num_cells = len(cells.parent)
-            for i in range(10):
-                print_cells(jax.tree.map(lambda a: a[i], cells))
-            if num_cells > 10:
-                jax.debug.print("(and {} more)", num_cells - 10)
+            if not limit:
+                limit = num_cells
+            for i in range(limit):
+                print_cells(jax.tree.map(lambda a: a[i], cells), i)
+            if num_cells > limit:
+                jax.debug.print("(and {} more)", num_cells - limit)
 
 
-def print_simulation(model, num_timesteps, key):
+def print_simulation(model, num_timesteps, key, limit_cells=None):
     """Run a simulation and pretty-print each timestep."""
     subkey, key = jax.random.split(key, 2)
     cells = model.initialize_cells(subkey, extended_attributes=True)
     print()
     print()
-    for t in range(min(num_timesteps, 10)):
+    for t in range(num_timesteps):
         print(f"{t=}:")
-        print_cells(cells)
+        print_cells(cells, limit=limit_cells)
         subkey, key = jax.random.split(key, 2)
         cells = simulation_step(cells, model, subkey, extended_attributes=True)
