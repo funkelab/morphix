@@ -142,8 +142,8 @@ def split_cell(cell: Cell, split_model: SplitModel, extended_attributes=False):
 
     # compute positions of daughter cells by moving them along the division
     # plane vector, proportional to their radius
-    daughter_a_position = cell.position + division_plane * daughter_a_radius
-    daughter_b_position = cell.position - division_plane * daughter_b_radius
+    daughter_a_position = cell.position + division_plane * daughter_b_radius
+    daughter_b_position = cell.position - division_plane * daughter_a_radius
 
     if extended_attributes:
         cell = cell.replace(
