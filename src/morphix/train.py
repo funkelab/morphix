@@ -113,7 +113,8 @@ def trajectory_loss(
     if debug:
         jax.debug.print("per-cell losses: {}", losses)
 
-    return losses.sum()
+    # mean loss of active cells
+    return losses.sum() / active.sum()
 
 
 def trajectory_rewards(cells: Cell, reward_function, delta_t):
