@@ -282,11 +282,10 @@ class MechanicsModel(eqx.Module):
 
     def __call__(self, cells: Cell, extended_attributes: bool = False):
         # mask out inactive cells
-        active = cells.parent >= 0
         force = morse_force(
             cells.position,
             cells.radius,
-            active,
+            cells.active,
             well_width=self.morse_well_width,
             well_depth=self.morse_well_depth,
         )
@@ -330,14 +329,13 @@ class DiffusionModel(eqx.Module):
         self.degradation_rates = degradation_rates
 
     def __call__(self, cells: Cell):
-        active = cells.parent >= 0
         concentrations = steady_state_concentrations(
             cells.position,
             cells.radius,
             cells.secretion,
             self.diffusion_coefs,
             self.degradation_rates,
-            active,
+            cells.active,
         )
         return cells.replace(concentration=concentrations)
 

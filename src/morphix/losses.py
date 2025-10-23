@@ -8,7 +8,7 @@ def pitchfork_reward(cells: Cell, t):
 
     For testing purposes.
     """
-    active = cells.parent >= 0
+    active = cells.active
 
     # get the number of active cells
     num_active = active.sum()

@@ -109,7 +109,7 @@ def print_cells(cells: Cell, i=None, limit=None):
                 cell_id = f" {i}"
             else:
                 cell_id = ""
-            if cell.parent >= 0:
+            if cell.active:
                 print_color_values(
                     f"Cell{cell_id} at ",
                     cell.position,

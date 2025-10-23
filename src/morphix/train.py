@@ -107,7 +107,7 @@ def trajectory_loss(
         jax.debug.print("log_p_motility: {}", log_p_motility)
 
     # zero-out rewards for inactive cells
-    active = cells.parent >= 0
+    active = cells.active
     rewards_lineage_to_go = rewards_lineage_to_go * active
     rewards_position_to_go = rewards_position_to_go * active
 

@@ -26,6 +26,10 @@ class Cell(eqx.Module):
         else:
             return self.parent.shape[-1]
 
+    @property
+    def active(self):
+        return self.parent >= 0
+
     def replace(
         self,
         **kwargs,

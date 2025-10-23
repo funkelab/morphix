@@ -67,7 +67,7 @@ def split_and_recombine(
 
     # update parent indices to current indices
     # (this invalidates the parent index temporarily)
-    active = cells.parent >= 0
+    active = cells.active
     indices = jnp.arange(num_cells, dtype=jnp.int16)
     parent_indices = indices * active - (1 - active)
     cells = cells.replace(parent=parent_indices)

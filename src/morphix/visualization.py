@@ -179,7 +179,7 @@ class LineageViewer(QWidget):
         position = self.lineage.position[t]
         radii = self.lineage.radius[t]
         parents = self.lineage.parent[t]
-        active = parents >= 0
+        active = self.lineage.active[t]
         num_cells = position.shape[0]
 
         cell_meshes = []
