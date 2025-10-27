@@ -17,6 +17,9 @@ def steady_state_concentrations(
         min=radii,
     )
 
+    # mask out inactive cells
+    secretion_rates = secretion_rates * active[:, None]
+
     # diffusion_coefs: (num_molecules,)
     # secretion_rates: (num_cells, num_molecules)
     # distances      : (num_cells, num_cells)
