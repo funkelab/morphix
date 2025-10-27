@@ -176,8 +176,6 @@ def print_cells(cells: Cell, i=None, limit=None):
                     "\tparent     :",
                     cell.parent,
                 )
-            else:
-                rprint("<empty>")
 
         if dims == 0:
             jax.debug.callback(print_callback, cells)
@@ -198,7 +196,7 @@ def print_simulation(model, num_timesteps, key, limit_cells=None):
     print()
     print()
     for t in range(num_timesteps):
-        print(f"{t=}:")
+        print(f"----- {t=}:")
         print_cells(cells, limit=limit_cells)
         subkey, key = jax.random.split(key, 2)
         cells = simulation_step(cells, model, subkey, extended_attributes=True)
