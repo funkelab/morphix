@@ -93,8 +93,8 @@ def print_cells(cells: Cell, i=None, limit=None):
     """Pretty print cells."""
     dims = len(cells.parent.shape)
 
-    min_pos = cells.position.min()
-    max_pos = cells.position.max()
+    min_pos = cells.position.min().item()
+    max_pos = cells.position.max().item()
 
     min_state = cells.state.min().item()
     max_state = cells.state.max().item()

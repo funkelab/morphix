@@ -321,8 +321,8 @@ class SecretionModel(eqx.Module):
 
 
 class DiffusionModel(eqx.Module):
-    diffusion_coefs: jnp.array
-    degradation_rates: jnp.array
+    diffusion_coefs: jax.Array
+    degradation_rates: jax.Array
 
     def __init__(self, diffusion_coefs, degradation_rates):
         self.diffusion_coefs = diffusion_coefs

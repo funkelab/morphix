@@ -51,7 +51,7 @@ def simulation_loss(
     num_timesteps: int,
     key,
     debug: bool = False,
-) -> float:
+) -> jax.Array:
     """Run the simulation and compute the loss for the given reward function."""
     # run the simulation
     trajectory = simulate(model, num_timesteps, key, debug)

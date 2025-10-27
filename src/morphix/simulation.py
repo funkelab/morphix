@@ -11,7 +11,7 @@ from .models import Model, SplitModel
 
 @partial(eqx.filter_jit)
 def simulate(
-    model: eqx.Module, num_timesteps: int, key, extended_attributes: bool = False
+    model: Model, num_timesteps: int, key, extended_attributes: bool = False
 ) -> Cell:
     key1, key2 = jax.random.split(key, 2)
 
@@ -36,7 +36,7 @@ def simulate(
 
 @partial(eqx.filter_jit)
 def simulation_step(
-    cells: Cell, model: eqx.Module, key, extended_attributes: bool = False
+    cells: Cell, model: Model, key, extended_attributes: bool = False
 ) -> Cell:
     # perform split (as indicated from previous timestep)
     cells = split_and_recombine(cells, model.split_model, extended_attributes)

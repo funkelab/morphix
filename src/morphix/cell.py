@@ -16,13 +16,13 @@ class Cell(eqx.Module):
     mechanical_force: jax.Array
 
     # extended attributes
-    volume_ratio: jax.Array = None
-    division_plane: jax.Array = None
+    volume_ratio: jax.Array | None = None
+    division_plane: jax.Array | None = None
 
     @property
-    def num_cells(self):
+    def num_cells(self) -> int:
         if len(self.parent.shape) == 0:
-            return None
+            return 1
         else:
             return self.parent.shape[-1]
 
