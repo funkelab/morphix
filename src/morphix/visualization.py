@@ -24,7 +24,7 @@ except ImportError as e:
 
 
 class LineageViewer(QWidget):
-    def __init__(self, lineage, delta_t, inactive_cell_opacity=0.01, parent=None):
+    def __init__(self, lineage, delta_t, inactive_cell_opacity=0.0, parent=None):
         super().__init__(parent)
         self.lineage = lineage
         self.n_timesteps = lineage.position.shape[0]
@@ -85,6 +85,9 @@ class LineageViewer(QWidget):
         del self.controller.controls["q"]
         del self.controller.controls["e"]
         del self.controller.controls["shift"]
+        # self.controller = gfx.OrbitController(
+        #     self.camera, target=(0, 0, 0), register_events=self.renderer
+        # )
 
         light = gfx.DirectionalLight(color=(1, 1, 1), intensity=1.0)
         light.local.position = (5, 10, 5)
@@ -245,12 +248,8 @@ class LineageViewer(QWidget):
                     mechanical_segs.append(origin)
                     mechanical_segs.append(origin + mechanical)
                     mechanical_segs.append([np.nan, np.nan, np.nan])
-                motility_segs = np.asarray(motility_segs, dtype=np.float32) + np.array(
-                    [0.5, 0, 0], dtype=np.float32
-                )
-                mechanical_segs = np.asarray(
-                    mechanical_segs, dtype=np.float32
-                ) + np.array([1, 0, 0], dtype=np.float32)
+                motility_segs = np.asarray(motility_segs, dtype=np.float32)
+                mechanical_segs = np.asarray(mechanical_segs, dtype=np.float32)
                 geometry = gfx.Geometry()
                 buf = gfx.Buffer(motility_segs)
                 geometry.positions = buf
@@ -274,7 +273,7 @@ class LineageViewer(QWidget):
         return objects
 
 
-def show_lineage(lineage, delta_t=1.0, inactive_cell_opacity=0.01):
+def show_lineage(lineage, delta_t=1.0, inactive_cell_opacity=0.0):
     app = QApplication(sys.argv)
     win = LineageViewer(lineage, delta_t, inactive_cell_opacity=inactive_cell_opacity)
     win.setWindowTitle("morphix lineage viewer")
