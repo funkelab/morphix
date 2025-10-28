@@ -16,6 +16,7 @@ from .simulation import simulate
         "reward_function",
         "num_timesteps",
         "optimizer",
+        "batch_size",
         "debug",
     ),
 )
@@ -27,6 +28,7 @@ def train_step(
     optimizer,
     opt_state,
     key,
+    batch_size=1,
     debug: bool = False,
 ):
     """Perform a single training step."""
@@ -34,8 +36,12 @@ def train_step(
     @partial(jax.jit, static_argnames=("static",))
     @jax.value_and_grad
     def loss_fn(params, static, key):
+        keys = jax.random.split(key, batch_size)
         model = eqx.combine(params, static)
-        return simulation_loss(model, reward_function, num_timesteps, key, debug)
+        loss = jax.vmap(
+            lambda k: simulation_loss(model, reward_function, num_timesteps, k, debug)
+        )(keys)
+        return loss.mean()
 
     loss, grad = loss_fn(params, static, key)
 
