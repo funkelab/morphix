@@ -34,21 +34,21 @@ def train_step(
     """Perform a single training step."""
 
     @partial(jax.jit, static_argnames=("static",))
-    @jax.value_and_grad
+    @partial(jax.value_and_grad, has_aux=True)
     def loss_fn(params, static, key):
         keys = jax.random.split(key, batch_size)
         model = eqx.combine(params, static)
-        loss = jax.vmap(
+        loss, details = jax.vmap(
             lambda k: simulation_loss(model, reward_function, num_timesteps, k, debug)
         )(keys)
-        return loss.mean()
+        return loss.mean(), details
 
-    loss, grad = loss_fn(params, static, key)
+    (loss, details), grad = loss_fn(params, static, key)
 
     updates, opt_state = optimizer.update(grad, opt_state, params)
     params = optax.apply_updates(params, updates)
 
-    return loss, params, opt_state
+    return loss, params, opt_state, details
 
 
 def simulation_loss(
@@ -57,18 +57,21 @@ def simulation_loss(
     num_timesteps: int,
     key,
     debug: bool = False,
-) -> jax.Array:
+) -> tuple[jax.Array, dict]:
     """Run the simulation and compute the loss for the given reward function."""
     # run the simulation
     trajectory = simulate(model, num_timesteps, key, debug)
 
     # compute the loss
-    return trajectory_loss(
+    loss, details = trajectory_loss(
         trajectory,
         reward_function,
         model.delta_t,
         debug,
     )
+
+    details["trajectory"] = trajectory
+    return loss, details
 
 
 def trajectory_loss(
@@ -76,7 +79,7 @@ def trajectory_loss(
     reward_function,
     delta_t,
     debug: bool = False,
-):
+) -> tuple[jax.Array, dict]:
     """Compute the loss for an entire trajectory."""
     # (t, n)
     rewards_lineage, rewards_position = trajectory_rewards(
@@ -120,7 +123,16 @@ def trajectory_loss(
         jax.debug.print("per-cell losses: {}", losses)
 
     # mean loss of active cells
-    return losses.sum() / active.sum()
+    loss = losses.sum() / active.sum()
+
+    details = {
+        "rewards_lineage": rewards_lineage,
+        "rewards_position": rewards_position,
+        "rewards_lineage_to_go": rewards_lineage_to_go,
+        "rewards_position_to_go": rewards_position_to_go,
+    }
+
+    return loss, details
 
 
 def trajectory_rewards(cells: Cell, reward_function, delta_t):
