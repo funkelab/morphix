@@ -113,16 +113,14 @@ def react(
     key,
     extended_attributes: bool = False,
 ) -> Cell:
-    key1, key2 = jax.random.split(key, 2)
-
     # update cell state
     cells = model.react_model(cells, extended_attributes)
 
     # calculate motility forces
-    cells = model.motility_model(cells, key1, extended_attributes)
+    cells = model.motility_model(cells, extended_attributes)
 
     # compute split probabilities and sample an action
-    cells = model.split_prob_model(cells, key2, extended_attributes)
+    cells = model.split_prob_model(cells, key, extended_attributes)
 
     return cells
 

@@ -82,7 +82,7 @@ def trajectory_loss(
 ) -> tuple[jax.Array, dict]:
     """Compute the loss for an entire trajectory."""
     # (t, n)
-    rewards_lineage, rewards_position = trajectory_rewards(
+    rewards_lineage, losses_position = trajectory_rewards(
         cells, reward_function, delta_t
     )
 
@@ -92,31 +92,26 @@ def trajectory_loss(
     # log_p_action: (t, n)
     log_p_action = jnp.log(p_action)
 
-    # add log prob of motility
-    log_p_motility = cells.log_p_motility
-
     # compute "reward-to-go" for each timestep and cell, i.e., sum of future
     # rewards rewards_to_go: (t, n)
+    # TODO: rewards to go should not be computed here, indices of cells over
+    # time might not line up
     rewards_lineage_to_go = jnp.cumsum(rewards_lineage[::-1], axis=0)[::-1]
-    rewards_position_to_go = jnp.cumsum(rewards_position[::-1], axis=0)[::-1]
 
     if debug:
         jax.debug.print("rewards_lineage: {}", rewards_lineage)
-        jax.debug.print("rewards_position: {}", rewards_position)
+        jax.debug.print("losses_position: {}", losses_position)
         jax.debug.print("split: {}", cells.split)
         jax.debug.print("p_split: {}", cells.p_split)
         jax.debug.print("p_action: {}", p_action)
         jax.debug.print("log_p_action: {}", log_p_action)
-        jax.debug.print("log_p_motility: {}", log_p_motility)
 
     # zero-out rewards for inactive cells
     active = cells.active
     rewards_lineage_to_go = rewards_lineage_to_go * active
-    rewards_position_to_go = rewards_position_to_go * active
 
     # per-cell losses: (t, n)
     losses_lineage = -log_p_action * rewards_lineage_to_go
-    losses_position = -log_p_motility * rewards_position_to_go
     losses = losses_lineage + losses_position
 
     if debug:
@@ -127,9 +122,8 @@ def trajectory_loss(
 
     details = {
         "rewards_lineage": rewards_lineage,
-        "rewards_position": rewards_position,
+        "losses_position": losses_position,
         "rewards_lineage_to_go": rewards_lineage_to_go,
-        "rewards_position_to_go": rewards_position_to_go,
     }
 
     return loss, details

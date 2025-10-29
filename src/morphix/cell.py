@@ -3,7 +3,6 @@ import jax
 
 
 class Cell(eqx.Module):
-    log_p_motility: jax.Array
     position: jax.Array
     radius: jax.Array
     state: jax.Array

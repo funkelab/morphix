@@ -110,40 +110,18 @@ class MotilityModel(eqx.Module):
             eqx.nn.Linear(cell_state_dims, hidden_dims, key=key1),
             eqx.nn.LayerNorm(hidden_dims),
             jax.nn.relu,
-            # predict mean and log of standard deviation
-            eqx.nn.Linear(hidden_dims, spatial_dims * 2, key=key2),
+            eqx.nn.Linear(hidden_dims, spatial_dims, key=key2),
         )
 
-    def __call__(self, cells, key, extended_attributes: bool = False):
-        mean, std = jax.vmap(self.motility_force_distribution)(cells.state)
-        keys = jax.random.split(key, cells.num_cells)
-        motility_force, log_p_motility = jax.vmap(
-            lambda m, v, k: self.sample(m, v, k, return_log_p=True)
-        )(mean, std, keys)
+    def __call__(self, cells, extended_attributes: bool = False):
+        force = jax.vmap(self.motility_force)(cells.state)
+        return cells.replace(motility_force=force)
 
-        return cells.replace(
-            motility_force=motility_force,
-            log_p_motility=log_p_motility,
-        )
-
-    def motility_force_distribution(self, cell_state: jax.Array):
+    def motility_force(self, cell_state: jax.Array):
         x = cell_state
         for layer in self.layers:
             x = layer(x)
-        mean = x[: self.spatial_dims]
-        # clip the standard deviation to avoid distribution collapse
-        std = jnp.clip(jnp.exp(x[self.spatial_dims :]), min=1e-6)
-        return mean, std
-
-    def sample(self, mean, std, key, return_log_p=False):
-        motility_force = mean + std * jax.random.normal(key, shape=mean.shape)
-        if not return_log_p:
-            return motility_force
-        var = std**2
-        log_p_motility = (
-            -0.5 * (jnp.log(2 * jnp.pi * var) + ((motility_force - mean) ** 2) / var)
-        ).sum(axis=-1)
-        return motility_force, log_p_motility
+        return x
 
 
 class SplitProbModel(eqx.Module):
@@ -426,7 +404,6 @@ class Model(eqx.Module):
         self.sensation_model = sensation_model
 
     def initialize_cells(self, key, extended_attributes=False):
-        key1, key2 = jax.random.split(key, 2)
         empty = jnp.zeros((), dtype=jnp.float32)
 
         if extended_attributes:
@@ -441,8 +418,6 @@ class Model(eqx.Module):
             extended_attrs = {}
 
         cells = Cell(
-            # filled in below
-            log_p_motility=empty,
             position=jnp.zeros(
                 (self.max_num_cells, self.motility_model.spatial_dims),
                 dtype=jnp.float32,
@@ -473,10 +448,10 @@ class Model(eqx.Module):
         )
 
         # initial positions
-        cells = self.motility_model(cells, key1, extended_attributes)
+        cells = self.motility_model(cells, extended_attributes)
 
         # initial split decisions
-        cells = self.split_prob_model(cells, key2, extended_attributes)
+        cells = self.split_prob_model(cells, key, extended_attributes)
 
         return cells
 
