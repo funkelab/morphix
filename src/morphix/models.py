@@ -166,28 +166,29 @@ class SplitProbModel(eqx.Module):
         )
 
     def __call__(self, cells: Cell, key, extended_attributes: bool = False):
-        key1, key2 = jax.random.split(key)
-
         # compute split probabilities
-        keys = jax.random.split(key1, cells.num_cells)
-        p_split = jax.vmap(self.split_probs)(cells.state, keys)
+        p_split = jax.vmap(self.split_probs)(cells.state)
 
         # sample an action (split or not)
-        split = self.sample(p_split, key2)
+        split = self.sample(p_split, key)
 
         return cells.replace(p_split=p_split, split=split)
 
-    def split_probs(self, cell_state: jax.Array, key):
+    def split_probs(self, cell_state: jax.Array):
         x = cell_state
         for layer in self.layers:
             x = layer(x)
-        if self.eps > 0:
-            explore = jax.random.uniform(key) < self.eps
-            x = 0.5 * explore + x * (1 - explore)
         return x.squeeze(-1)
 
     def sample(self, split_probs, key):
-        uniform = jax.random.uniform(key, shape=split_probs.shape)
+        key1, key2 = jax.random.split(key, 2)
+
+        uniform = jax.random.uniform(key1, shape=split_probs.shape)
+
+        if self.eps > 0:
+            explore = jax.random.uniform(key2) < self.eps
+            split_probs = 0.5 * explore + split_probs * (1 - explore)
+
         return split_probs > uniform
 
 
