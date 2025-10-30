@@ -7,6 +7,7 @@ import jax.numpy as jnp
 import optax
 
 from .cell import Cell
+from .reinforce import infinite_horizon_discounted, infinite_horizon_undiscounted
 from .simulation import simulate
 
 
@@ -210,7 +211,8 @@ def reinforcement_losses(cells, lineage_loss):
     # compute "losses-to-go" for each timestep, i.e., sum of future losses
     #
     # losses_to_go: (t,)
-    losses_to_go = jnp.cumsum(lineage_loss[::-1], axis=0)[::-1]
+    # TODO: gamma should be a parameter in Model and passed on to this function
+    losses_to_go = infinite_horizon_discounted(lineage_loss, gamma=0.9)
 
     # compute per-cell reinforcement losses by broadcasting losses-to-go over
     # all cells (this includes inactive cells, which will be zeroed-out later)
