@@ -85,7 +85,6 @@ class ReactModel(eqx.Module):
             eqx.nn.LayerNorm(hidden_dims),
             jax.nn.relu,
             eqx.nn.Linear(hidden_dims, cell_state_dims, key=key2),
-            jax.nn.sigmoid,
         )
 
     def __call__(self, cells: Cell, extended_attributes: bool = False):
