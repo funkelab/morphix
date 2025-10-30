@@ -10,6 +10,32 @@ from .cell import Cell
 from .simulation import simulate
 
 
+class BatchLog(eqx.Module):
+    """A data class to store training details for a single batch."""
+
+    lineage_loss: jax.Array
+    _cell_losses: jax.Array
+    _rl_losses: jax.Array
+    losses: jax.Array
+    trajectory: Cell
+
+    @property
+    def cell_losses(self):
+        return self._cell_losses * self.trajectory.active
+
+    @property
+    def rl_losses(self):
+        return self._rl_losses * self.trajectory.active
+
+    @property
+    def cell_loss(self):
+        return self.cell_losses.sum() / self.trajectory.active.sum()
+
+    @property
+    def rl_loss(self):
+        return self.rl_losses.sum() / self.trajectory.active.sum()
+
+
 @partial(
     jax.jit,
     static_argnames=(
@@ -100,17 +126,17 @@ def train_step(
     def batch_loss_grad(params, static, key):
         keys = jax.random.split(key, batch_size)
         model = eqx.combine(params, static)
-        loss, details = jax.vmap(
+        loss, batch_log = jax.vmap(
             lambda k: simulation_loss(model, loss_function, num_timesteps, k, debug)
         )(keys)
-        return loss.mean(), details
+        return loss.mean(), batch_log
 
-    (loss, details), grad = batch_loss_grad(params, static, key)
+    (loss, batch_log), grad = batch_loss_grad(params, static, key)
 
     updates, opt_state = optimizer.update(grad, opt_state, params)
     params = optax.apply_updates(params, updates)
 
-    return loss, params, opt_state, details
+    return loss, params, opt_state, batch_log
 
 
 def simulation_loss(
@@ -119,22 +145,20 @@ def simulation_loss(
     num_timesteps: int,
     key,
     debug: bool = False,
-) -> tuple[jax.Array, dict]:
+) -> tuple[jax.Array, BatchLog]:
     """Run the simulation and compute the loss for the given loss function."""
     # run the simulation
     trajectory = simulate(model, num_timesteps, key, debug)
 
     # compute the loss
-    loss, details = trajectory_loss(
+    loss, batch_log = trajectory_loss(
         trajectory,
         loss_function,
         num_timesteps,
         model.delta_t,
-        debug,
     )
 
-    details["trajectory"] = trajectory
-    return loss, details
+    return loss, batch_log
 
 
 def trajectory_loss(
@@ -142,8 +166,7 @@ def trajectory_loss(
     loss_function,
     num_timesteps,
     delta_t,
-    debug: bool = False,
-) -> tuple[jax.Array, dict]:
+) -> tuple[jax.Array, BatchLog]:
     """Compute the loss for an entire trajectory."""
     # map loss function over time
     lineage_loss, cell_losses = jax.vmap(loss_function)(
@@ -161,22 +184,18 @@ def trajectory_loss(
     active = cells.active
     losses *= active
 
-    if debug:
-        jax.debug.print("lineage loss: {}", lineage_loss)
-        jax.debug.print("cell losses: {}", cell_losses)
-        jax.debug.print("active: {}", active)
-        jax.debug.print("losses: {}", losses)
-
     # compute mean loss over all active cells
     loss = losses.sum() / active.sum()
 
-    details = {
-        "lineage_loss": lineage_loss,
-        "cell_losses": cell_losses,
-        "losses": losses,
-    }
+    batch_log = BatchLog(
+        lineage_loss=lineage_loss,
+        _cell_losses=cell_losses,
+        _rl_losses=rl_losses,
+        losses=losses,
+        trajectory=cells,
+    )
 
-    return loss, details
+    return loss, batch_log
 
 
 def reinforcement_losses(cells, lineage_loss):
