@@ -32,6 +32,7 @@ class LineageViewer(QWidget):
         self.current_t = 0
         self.playing = False
         self.inactive_cell_opacity = inactive_cell_opacity
+        self.dark_bg = True
 
         # compute colors from UMAP of cell state
         print("Computing colors from state...")
@@ -89,6 +90,10 @@ class LineageViewer(QWidget):
         #     self.camera, target=(0, 0, 0), register_events=self.renderer
         # )
 
+        self.color_dark = (0, 0, 0)
+        self.color_light = (1, 1, 1)
+        self.background = gfx.Background.from_color(self.color_dark)
+
         light = gfx.DirectionalLight(color=(1, 1, 1), intensity=1.0)
         light.local.position = (5, 10, 5)
 
@@ -96,6 +101,7 @@ class LineageViewer(QWidget):
         self.cached_objects = {}
 
         self.scene = gfx.Scene()
+        self.scene.add(self.background)
         self.scene.add(gfx.AmbientLight(intensity=1.0))
         self.scene.add(light)
         self.scene.add(self.objects)
@@ -117,6 +123,8 @@ class LineageViewer(QWidget):
             self.advance_frame(-1)
         elif event["key"] == "e":
             self.advance_frame(1)
+        elif event["key"] == "b":
+            self.toggle_bg()
 
     def compute_scene_bounds(self):
         mins = (
@@ -158,6 +166,14 @@ class LineageViewer(QWidget):
     def advance_frame(self, delta=1):
         t = (self.current_t + delta) % self.n_timesteps
         self.slider.setValue(t)
+
+    def toggle_bg(self):
+        self.dark_bg = not self.dark_bg
+        if self.dark_bg:
+            self.background.material.set_colors(self.color_dark)
+        else:
+            self.background.material.set_colors(self.color_light)
+        self.canvas.update()
 
     def on_slider_changed(self, t):
         t = int(t)
