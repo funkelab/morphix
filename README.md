@@ -37,3 +37,17 @@ about Jax-Morph and what it can do.
 At the moment, Jax-Morph is a more mature package for morphogenesis simulation,
 highly customizable, and has already been used to uncover principles of
 development.
+
+Development
+-----------
+
+### Deployment
+
+To deploy a new version, first make sure to bump the version string in
+`morphix/__init__.py`.  Then create an **annotated** tag, and push it to github.
+This will trigger the `deploy.yaml` workflow to upload to PyPI
+
+```bash
+git tag -a vX.Y.Z -m vX.Y.Z
+git push upstream --follow-tags
+```
