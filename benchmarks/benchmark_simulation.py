@@ -15,16 +15,17 @@ import morphix as mx
 if __name__ == "__main__":
     max_num_cells = 8
     cell_state_dims = 32
+    num_molecules = 8
+    delta_t = 1.0
     num_timesteps = 10_000
-    exploration_eps = 0.0
 
     key = jax.random.key(1912)
     subkey, key = jax.random.split(key, 2)
-    model = mx.create_model(max_num_cells, cell_state_dims, exploration_eps, subkey)
+    model = mx.create_model(key, max_num_cells, cell_state_dims, num_molecules, delta_t)
 
     # print a few iterations:
     subkey, key = jax.random.split(key, 2)
-    mx.print_simulation(model, num_timesteps, subkey)
+    mx.print_simulation(model, num_timesteps=10, key=subkey)
 
     # benchmark many more iterations
     start = time.time()
