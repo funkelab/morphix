@@ -3,11 +3,10 @@ from functools import partial
 
 import equinox as eqx
 import jax
-import jax.numpy as jnp
 import optax
 
 from .cell import Cell
-from .reinforce import infinite_horizon_discounted, infinite_horizon_undiscounted
+from .reinforce import reinforcement_losses
 from .simulation import simulate
 
 
@@ -155,69 +154,39 @@ def simulation_loss(
     loss, batch_log = trajectory_loss(
         trajectory,
         loss_function,
-        num_timesteps,
-        model.delta_t,
     )
 
     return loss, batch_log
 
 
 def trajectory_loss(
-    cells: Cell,
+    trajectory: Cell,
     loss_function,
-    num_timesteps,
-    delta_t,
 ) -> tuple[jax.Array, BatchLog]:
     """Compute the loss for an entire trajectory."""
-    # map loss function over time
-    lineage_loss, cell_losses = jax.vmap(loss_function)(
-        cells, jnp.arange(num_timesteps) * delta_t
-    )
+    # compute user-provided lineage and cell losses
+    lineage_losses, cell_losses = loss_function(trajectory)
 
     # turn (non-differentiable) lineage losses into reinforcement learning
     # losses
-    rl_losses = reinforcement_losses(cells, lineage_loss)
+    rl_losses = reinforcement_losses(trajectory, lineage_losses)
 
     # combine losses
     losses = rl_losses + cell_losses
 
     # zero-out losses of inactive cells
-    active = cells.active
+    active = trajectory.active
     losses *= active
 
     # compute mean loss over all active cells
     loss = losses.sum() / active.sum()
 
     batch_log = BatchLog(
-        lineage_loss=lineage_loss,
+        lineage_loss=lineage_losses,
         _cell_losses=cell_losses,
         _rl_losses=rl_losses,
         losses=losses,
-        trajectory=cells,
+        trajectory=trajectory,
     )
 
     return loss, batch_log
-
-
-def reinforcement_losses(cells, lineage_loss):
-    """Compute reinforcement losses given (non-differentiable) lineage losses."""
-    # compute log probabilities of each action taken
-    #
-    # log_p_action: (t, n)
-    log_p_action = jnp.log(
-        cells.p_split * cells.split + (1.0 - cells.p_split) * (1 - cells.split)
-    )
-
-    # compute "losses-to-go" for each timestep, i.e., sum of future losses
-    #
-    # losses_to_go: (t,)
-    # TODO: gamma should be a parameter in Model and passed on to this function
-    losses_to_go = infinite_horizon_discounted(lineage_loss, gamma=0.9)
-
-    # compute per-cell reinforcement losses by broadcasting losses-to-go over
-    # all cells (this includes inactive cells, which will be zeroed-out later)
-    #
-    # losses: (t, n)
-    losses = log_p_action * losses_to_go[:, None]
-
-    return losses

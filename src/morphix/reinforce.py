@@ -2,11 +2,38 @@ import jax
 import jax.numpy as jnp
 
 
+def reinforcement_losses(cells, lineage_losses):
+    """Compute reinforcement losses given (non-differentiable) lineage losses."""
+    # compute log probabilities of each action taken
+    #
+    # log_p_action: (t, n)
+    log_p_action = jnp.log(
+        cells.p_split * cells.split + (1.0 - cells.p_split) * (1 - cells.split)
+    )
+
+    # compute "losses-to-go" for each timestep, i.e., sum of future losses
+    #
+    # lineage_losses: (t, n) or (t, 1)
+    # losses_to_go  : (t, n) or (t, 1)
+    # TODO: gamma should be a parameter in Model and passed on to this function
+    losses_to_go = infinite_horizon_discounted(lineage_losses, gamma=0.9)
+
+    # compute per-cell reinforcement losses by broadcasting losses-to-go over
+    # all cells (this includes inactive cells, which will be zeroed-out later)
+    #
+    # losses: (t, n)
+    losses = log_p_action * losses_to_go
+
+    return losses
+
+
 def infinite_horizon_undiscounted(losses: jax.Array):
+    """Given losses over time, compute the per-timestep future loss."""
     return jnp.cumsum(losses[::-1], axis=0)[::-1]
 
 
 def infinite_horizon_discounted(losses: jax.Array, gamma: float):
+    """Given losses over time, compute the per-timestep future loss with a decay."""
     # discounted values are:
     #
     # d_n = l_n
@@ -22,6 +49,8 @@ def infinite_horizon_discounted(losses: jax.Array, gamma: float):
         d = next_d * gamma + current_loss
         return d, d
 
-    _, discounted_values = jax.lax.scan(reverse_discount, 0.0, losses[::-1])
+    _, discounted_values = jax.lax.scan(
+        reverse_discount, jnp.zeros_like(losses[0], dtype=jnp.float32), losses[::-1]
+    )
 
     return discounted_values[::-1]

@@ -1,3 +1,5 @@
+from . import losses
+from .cell import Cell
 from .models import create_model
 from .simulation import simulate, simulation_step
 from .train import train_step
@@ -10,9 +12,11 @@ from .utils import (
 )
 
 __all__ = [
+    "Cell",
     "create_model",
     "load_lineage",
     "load_model",
+    "losses",
     "print_simulation",
     "save_lineage",
     "save_model",

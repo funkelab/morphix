@@ -1,31 +1,146 @@
+from abc import abstractmethod
+
+import jax
 import jax.numpy as jnp
 
 from .cell import Cell
 
 
-def pitchfork_reward(cells: Cell, t):
-    """A reward function that gives rise to a "pitchfork" lineage.
+class Loss:
+    """Base class for losses."""
 
-    For testing purposes.
+    @abstractmethod
+    def compute(self, trajectory: Cell) -> tuple[jax.Array, jax.Array]:
+        """Main method to compute the loss.
+
+        Args:
+            trajectory:
+
+                The simulated trajectory to compute the loss for.
+
+        Returns:
+            This method has to return two tensors: the "lineage loss" tensor
+            and the "cell loss" tensor. Each tensor should be shaped `(t, n)` ,
+            where `t` is the number of time steps and `n` the number of cells
+            (including inactive cells).
+
+            Some losses do not factorize over individual cells. In this case,
+            this method can return a tensor shaped `(t, 1)`. The loss will then
+            be broadcast later over all cells.
+        """
+        pass
+
+
+class LineageLoss(Loss):
+    """Compute losses to match a simulation to a target lineage.
+
+    For topological correctness, this loss simply counts the number of active
+    cells per time step. Any deviation to the target number of active cells is
+    the loss.
+
+    For positions, this loss computes the sum of squared differences of two
+    mixture of Gaussians distributions, evaluated at specific key points. The
+    key points are the positions of the target cells, as well as additional
+    points offset by `sigma` in each spatial direction (positive and negative).
+    The `sigma` parameter also controls the width of the Gaussians.
+
+    Args:
+        target:
+
+            The target lineage. Only `position` and `active` will be used.
+
+        sigma:
+
+            The "variance" of the Gaussians used in the mixture to fit
+            positions.
     """
-    active = cells.active
 
-    # get the number of active cells
-    num_active = active.sum()
+    def __init__(self, target, sigma=1.0):
+        self.target = target
+        self.sigma = sigma
 
-    # one cell until t=3; then two cells
-    target = 1 + (t > 3)
+    def compute(self, trajectory: Cell) -> tuple[jax.Array, jax.Array]:
+        # map over time steps
+        #
+        # lineage_losses: (t,)
+        # cell_losses   : (t,)
+        lineage_losses, cell_losses = jax.vmap(self.timestep_loss)(
+            trajectory, self.target
+        )
 
-    diff = num_active - target
+        # ensure that losses are broadcastable over cells
+        #
+        # lineage_losses: (t, 1)
+        # cell_losses   : (t, 1)
+        return lineage_losses[:, None], cell_losses[:, None]
 
-    # reward is negative deviation from target, but only for active cells
-    # lineage reward is in [0, num_cells]
-    rewards_lineage = active * -jnp.abs(diff)
+    def timestep_loss(self, cells, target):
+        active = cells.active
 
-    # add position reward (y coordinate should be t) in (0.0, 1.0]
-    rewards_position = (
-        active * 0.01 / jnp.clip((cells.position[:, 1] - t) ** 2, a_min=1e-2)
-    )
+        # get the number of active cells
+        num_active = active.sum()
 
-    # (n,)
-    return rewards_lineage, rewards_position
+        # get the number of active cells in the target
+        num_target_active = target.active.sum()
+
+        # lineage loss is deviation from target
+        lineage_loss = jnp.abs(num_active - num_target_active)
+
+        # compute position loss
+        position_loss = self.position_loss(cells, target)
+
+        # lineage_loss : (,)
+        # position_loss: (,)
+        return lineage_loss, position_loss
+
+    def position_loss(self, cells: Cell, target):
+        # key_points: (k, d)   k = n + 2d
+        offset = jnp.sqrt(self.sigma)
+        key_points = jnp.concatenate(
+            [
+                target.position,
+                target.position + jnp.array((offset, 0, 0)),
+                target.position + jnp.array((0, offset, 0)),
+                target.position + jnp.array((0, 0, offset)),
+                target.position - jnp.array((offset, 0, 0)),
+                target.position - jnp.array((0, offset, 0)),
+                target.position - jnp.array((0, 0, offset)),
+            ]
+        )
+
+        def score(x):
+            """Compute the MoG score for a given point `x`."""
+            # x         : (d,)
+            # key_points: (k, d)
+            # dist      : (k,)
+            dist = jnp.sum((key_points - x) ** 2 / self.sigma, axis=-1)
+            # (k,)
+            return jnp.exp(-dist)
+
+        # compute key point scores for each target position
+        # (n, k)
+        target_scores = jax.vmap(score)(target.position)
+        # ignore scores from inactive cells
+        target_scores *= target.active[:, None]
+        # sum over target positions
+        # (k,)
+        target_scores = target_scores.sum(axis=0)
+
+        # compute key point scores for each predicted position
+        # (n, k)
+        trajectory_scores = jax.vmap(score)(cells.position)
+        # ignore scores from inactive cells
+        trajectory_scores *= cells.active[:, None]
+        # sum over predicted positions
+        # (k,)
+        trajectory_scores = trajectory_scores.sum(axis=0)
+
+        # compute squared error at key points
+        # (k,)
+        error = (target_scores - trajectory_scores) ** 2
+
+        # average error over active target positions
+        # timestep_loss: (,)
+        timestep_loss = error.sum() / target.active.sum()
+
+        return timestep_loss
