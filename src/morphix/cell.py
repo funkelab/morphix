@@ -3,6 +3,8 @@ import jax
 
 
 class Cell(eqx.Module):
+    """Data class to represent a cell (or a collection of cells)."""
+
     position: jax.Array
     radius: jax.Array
     state: jax.Array
