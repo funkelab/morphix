@@ -18,12 +18,15 @@ dynamic = ["version"]
 dependencies = ["jax", "equinox", "optax", "rich"]
 
 [project.optional-dependencies]
-gui = ["pygfx", "pyqt5", "umap-learn"]
+gui = ["pygfx", "pyqt5", "umap-learn", "spatial_graph"]
 dev = ["pre-commit", "pytest", "pytest-cov", "ruff", "twine", "build"]
 test = ["pytest", "pytest-cov"]
 
 [project.urls]
 homepage = "https://github.com/funkelab/morphix"
+
+[tool.uv.sources]
+spatial_graph = { git = "https://github.com/funkelab/spatial_graph", rev = "b56072d71f976e25d9cd70cb84a08caf7214c62f" }
 
 # https://hatch.pypa.io/latest/version/
 [tool.hatch.version]
