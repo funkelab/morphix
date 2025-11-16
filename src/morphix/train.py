@@ -13,27 +13,35 @@ from .simulation import simulate
 class BatchLog(eqx.Module):
     """A data class to store training details for a single batch."""
 
-    lineage_loss: jax.Array
-    _cell_losses: jax.Array
+    _raw_losses: jax.Array
     _rl_losses: jax.Array
     losses: jax.Array
     trajectory: Cell
 
     @property
-    def cell_losses(self):
-        return self._cell_losses * self.trajectory.active
+    def raw_losses(self):
+        """The raw losses (per time step and cell)."""
+        return self._raw_losses * self.trajectory.active
+
+    @property
+    def raw_loss(self):
+        """The overall raw loss (averaged over active cells)."""
+        return self.raw_losses.sum() / self.trajectory.active.sum()
 
     @property
     def rl_losses(self):
+        """The reinforcement learning losses (per time step and cell)."""
         return self._rl_losses * self.trajectory.active
 
     @property
-    def cell_loss(self):
-        return self.cell_losses.sum() / self.trajectory.active.sum()
+    def rl_loss(self):
+        """The overall reinforcement learning loss (averaged over active cells)."""
+        return self.rl_losses.sum() / self.trajectory.active.sum()
 
     @property
-    def rl_loss(self):
-        return self.rl_losses.sum() / self.trajectory.active.sum()
+    def loss(self):
+        """The combined loss (raw and RL, averaged over active cells)."""
+        return self.losses.sum() / self.trajectory.active.sum()
 
 
 @partial(
@@ -78,20 +86,16 @@ def train_step(
             of all cells at time `t`. `cells` includes inactive cells. `t` is
             the simulation time (`timestep * model.delta_t`).
 
-            It has to return two loss values: `(lineage_loss, cell_losses)`.
-            `lineage_loss` is a scalar and `cell_losses` should have shape
-            `(n,)`, where `n` is the number of cells (including inactive
-            cells). Losses for inactive cells can be arbitrary and will be
-            ignored (zeroed-out later on).
+            It has to return a loss array that should have shape `(n,)`, where
+            `n` is the number of cells (including inactive cells). Losses for
+            inactive cells can be arbitrary and will be ignored (zeroed-out
+            later on).
 
-            The lineage loss scores the topology of the lineage and will be
-            used in a reinforcement learning method to adjust the split
-            probabilities of the model. This loss does not have to be
-            differentiable.
-
-            The cell losses are differentiable losses on arbitrary attributes
-            of the cells (e.g., their position, size, or state). Those losses
-            will be directly optimized.
+            This loss should serve two purposes: it should score the topology
+            of the lineage and attributes of the cells (like position and
+            size). The loss will be directly optimized using gradient descent
+            (to fit attributes) and also through reinforcement learning on cell
+            split decisions (to obtain a correct lineage tree).
 
         num_timesteps:
 
@@ -164,15 +168,14 @@ def trajectory_loss(
     loss_function,
 ) -> tuple[jax.Array, BatchLog]:
     """Compute the loss for an entire trajectory."""
-    # compute user-provided lineage and cell losses
-    lineage_losses, cell_losses = loss_function(trajectory)
+    # compute user-provided losses
+    raw_losses = loss_function(trajectory)
 
-    # turn (non-differentiable) lineage losses into reinforcement learning
-    # losses
-    rl_losses = reinforcement_losses(trajectory, lineage_losses)
+    # turn losses into reinforcement learning losses
+    rl_losses = reinforcement_losses(trajectory, raw_losses)
 
-    # combine losses
-    losses = rl_losses + cell_losses
+    # and add those to the raw losses
+    losses = raw_losses + rl_losses
 
     # zero-out losses of inactive cells
     active = trajectory.active
@@ -182,8 +185,7 @@ def trajectory_loss(
     loss = losses.sum() / active.sum()
 
     batch_log = BatchLog(
-        lineage_loss=lineage_losses,
-        _cell_losses=cell_losses,
+        _raw_losses=raw_losses,
         _rl_losses=rl_losses,
         losses=losses,
         trajectory=trajectory,

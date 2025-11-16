@@ -19,10 +19,9 @@ class Loss:
                 The simulated trajectory to compute the loss for.
 
         Returns:
-            This method has to return two tensors: the "lineage loss" tensor
-            and the "cell loss" tensor. Each tensor should be shaped `(t, n)` ,
-            where `t` is the number of time steps and `n` the number of cells
-            (including inactive cells).
+            A loss tensor that should be shaped `(t, n)` , where `t` is the
+            number of time steps and `n` the number of cells (including
+            inactive cells).
 
             Some losses do not factorize over individual cells. In this case,
             this method can return a tensor shaped `(t, 1)`. The loss will then
@@ -32,17 +31,13 @@ class Loss:
 
 
 class LineageLoss(Loss):
-    """Compute losses to match a simulation to a target lineage.
+    """A loss to match a simulation to a target lineage.
 
-    For topological correctness, this loss simply counts the number of active
-    cells per time step. Any deviation to the target number of active cells is
-    the loss.
-
-    For positions, this loss computes the sum of squared differences of two
-    mixture of Gaussians distributions, evaluated at specific key points. The
-    key points are the positions of the target cells, as well as additional
-    points offset by `sigma` in each spatial direction (positive and negative).
-    The `sigma` parameter also controls the width of the Gaussians.
+    This loss computes the sum of squared differences of two mixture of
+    Gaussians densities, evaluated at specific key points. The key points are
+    the positions of the target cells, as well as additional points offset by
+    `sigma` in each spatial direction (positive and negative). The `sigma`
+    parameter also controls the width of the Gaussians.
 
     Args:
         target:
@@ -51,8 +46,7 @@ class LineageLoss(Loss):
 
         sigma:
 
-            The "variance" of the Gaussians used in the mixture to fit
-            positions.
+            The variance of the Gaussians used in the mixture to fit positions.
     """
 
     def __init__(self, target, sigma=1.0):
@@ -62,39 +56,21 @@ class LineageLoss(Loss):
     def compute(self, trajectory: Cell) -> tuple[jax.Array, jax.Array]:
         # map over time steps
         #
-        # lineage_losses: (t,)
-        # cell_losses   : (t,)
-        lineage_losses, cell_losses = jax.vmap(self.timestep_loss)(
-            trajectory, self.target
-        )
+        # losses: (t,)
+        losses = jax.vmap(self.timestep_loss)(trajectory, self.target)
 
         # ensure that losses are broadcastable over cells
         #
-        # lineage_losses: (t, 1)
-        # cell_losses   : (t, 1)
-        return lineage_losses[:, None], cell_losses[:, None]
+        # losses: (t, 1)
+        return losses[:, None]
 
     def timestep_loss(self, cells, target):
-        active = cells.active
-
-        # get the number of active cells
-        num_active = active.sum()
-
-        # get the number of active cells in the target
-        num_target_active = target.active.sum()
-
-        # lineage loss is deviation from target
-        lineage_loss = jnp.abs(num_active - num_target_active)
-
-        # compute position loss
-        position_loss = self.position_loss(cells, target)
-
-        # lineage_loss : (,)
-        # position_loss: (,)
-        return lineage_loss, position_loss
-
-    def position_loss(self, cells: Cell, target):
-        # key_points: (k, d)   k = n + 2d
+        # compute keypoints around each cell and each target location
+        #
+        # key points are the center of the cell, plus one more key point in
+        # each direction (positive and negative)
+        #
+        # key_points: (2k, d)   k = n + 2d
         offset = jnp.sqrt(self.sigma)
         key_points = jnp.concatenate(
             [
