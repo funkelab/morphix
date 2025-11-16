@@ -105,6 +105,13 @@ class LineageLoss(Loss):
                 target.position - jnp.array((offset, 0, 0)),
                 target.position - jnp.array((0, offset, 0)),
                 target.position - jnp.array((0, 0, offset)),
+                cells.position,
+                cells.position + jnp.array((offset, 0, 0)),
+                cells.position + jnp.array((0, offset, 0)),
+                cells.position + jnp.array((0, 0, offset)),
+                cells.position - jnp.array((offset, 0, 0)),
+                cells.position - jnp.array((0, offset, 0)),
+                cells.position - jnp.array((0, 0, offset)),
             ]
         )
 
