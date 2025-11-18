@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 
 
-def reinforcement_losses(cells, lineage_losses):
+def reinforcement_losses(cells, lineage_losses, gamma):
     """Compute reinforcement losses given (non-differentiable) lineage losses."""
     # compute log probabilities of each action taken
     #
@@ -15,8 +15,10 @@ def reinforcement_losses(cells, lineage_losses):
     #
     # lineage_losses: (t, n) or (t, 1)
     # losses_to_go  : (t, n) or (t, 1)
-    # TODO: gamma should be a parameter in Model and passed on to this function
-    losses_to_go = infinite_horizon_discounted(lineage_losses, gamma=0.9)
+    if gamma == 1.0:
+        losses_to_go = infinite_horizon_undiscounted(lineage_losses)
+    else:
+        losses_to_go = infinite_horizon_discounted(lineage_losses, gamma=gamma)
 
     # compute per-cell reinforcement losses by broadcasting losses-to-go over
     # all cells (this includes inactive cells, which will be zeroed-out later)

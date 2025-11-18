@@ -16,6 +16,7 @@ def create_model(
     exploration_eps=0.0,
     morse_well_width=1.0,
     morse_well_depth=1.0,
+    rl_discount_gamma=0.9,
 ):
     key1, key2, key3, key4, key5, key6, key7 = jax.random.split(key, 7)
 
@@ -70,6 +71,7 @@ def create_model(
         secretion_model=secretion_model,
         diffusion_model=diffusion_model,
         sensation_model=sensation_model,
+        rl_discount_gamma=rl_discount_gamma,
         key=key7,
     )
     return model
@@ -357,11 +359,13 @@ class SensationModel(eqx.Module):
 
 
 class Model(eqx.Module):
+    # simulation parameters
     max_num_cells: int
     cell_state_dims: int
     num_molecules: int
     delta_t: float
     initial_cell_states: jax.Array
+    # models
     react_model: ReactModel
     motility_model: MotilityModel
     split_prob_model: SplitProbModel
@@ -370,6 +374,8 @@ class Model(eqx.Module):
     secretion_model: SecretionModel
     diffusion_model: DiffusionModel
     sensation_model: SensationModel
+    # learning parameters
+    rl_discount_gamma: float
 
     def __init__(
         self,
@@ -385,8 +391,10 @@ class Model(eqx.Module):
         secretion_model,
         diffusion_model,
         sensation_model,
+        rl_discount_gamma,
         key,
     ):
+        # simulation parameters
         self.max_num_cells = max_num_cells
         self.cell_state_dims = cell_state_dims
         self.num_molecules = num_molecules
@@ -394,6 +402,8 @@ class Model(eqx.Module):
         self.initial_cell_states = jax.random.uniform(
             key=key, shape=(max_num_cells, cell_state_dims)
         )
+
+        # models
         self.react_model = react_model
         self.motility_model = motility_model
         self.split_prob_model = split_prob_model
@@ -402,6 +412,9 @@ class Model(eqx.Module):
         self.secretion_model = secretion_model
         self.diffusion_model = diffusion_model
         self.sensation_model = sensation_model
+
+        # learning parameters
+        self.rl_discount_gamma = float(rl_discount_gamma)
 
     def initialize_cells(self, key, extended_attributes=False):
         empty = jnp.zeros((), dtype=jnp.float32)
@@ -466,4 +479,5 @@ class Model(eqx.Module):
             "cell_state_dims": self.cell_state_dims,
             "num_molecules": self.num_molecules,
             "delta_t": self.delta_t,
+            "rl_discount_gamma": self.rl_discount_gamma,
         }

@@ -158,6 +158,7 @@ def simulation_loss(
     loss, batch_log = trajectory_loss(
         trajectory,
         loss_function,
+        model.rl_discount_gamma,
     )
 
     return loss, batch_log
@@ -166,13 +167,18 @@ def simulation_loss(
 def trajectory_loss(
     trajectory: Cell,
     loss_function,
+    rl_discount_gamma,
 ) -> tuple[jax.Array, BatchLog]:
     """Compute the loss for an entire trajectory."""
     # compute user-provided losses
     raw_losses = loss_function(trajectory)
 
     # turn losses into reinforcement learning losses
-    rl_losses = reinforcement_losses(trajectory, raw_losses)
+    rl_losses = reinforcement_losses(
+        trajectory,
+        raw_losses,
+        gamma=rl_discount_gamma,
+    )
 
     # and add those to the raw losses
     losses = raw_losses + rl_losses
