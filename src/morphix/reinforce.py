@@ -2,14 +2,20 @@ import jax
 import jax.numpy as jnp
 
 
-def reinforcement_losses(cells, lineage_losses, gamma):
+def reinforcement_losses(cells, lineage_losses, gamma, entropy_regularizer):
     """Compute reinforcement losses given (non-differentiable) lineage losses."""
-    # compute log probabilities of each action taken
+    # compute log probabilities of each action taken and negative entropy of
+    # distribution
     #
+    # p_action    : (t, n)
     # log_p_action: (t, n)
-    log_p_action = jnp.log(
-        cells.p_split * cells.split + (1.0 - cells.p_split) * (1 - cells.split)
-    )
+    # neg_entropy : (,)
+    p_action_0 = jnp.clip(1.0 - cells.p_split, min=1e-6)
+    p_action_1 = jnp.clip(cells.p_split, min=1e-6)
+    log_p_action_0 = jnp.log(p_action_0)
+    log_p_action_1 = jnp.log(p_action_1)
+    log_p_action = log_p_action_1 * cells.split + log_p_action_0 * (1 - cells.split)
+    neg_entropy = (p_action_0 * log_p_action_0 + p_action_1 * log_p_action_1).sum()
 
     # compute "losses-to-go" for each timestep, i.e., sum of future losses
     #
@@ -24,7 +30,9 @@ def reinforcement_losses(cells, lineage_losses, gamma):
     # all cells (this includes inactive cells, which will be zeroed-out later)
     #
     # losses: (t, n)
-    losses = log_p_action * losses_to_go
+    losses = (
+        log_p_action * losses_to_go + entropy_regularizer * neg_entropy
+    )
 
     return losses
 
