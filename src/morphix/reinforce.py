@@ -29,9 +29,14 @@ def reinforcement_losses(cells, lineage_losses, gamma, entropy_regularizer):
     # compute per-cell reinforcement losses by broadcasting losses-to-go over
     # all cells (this includes inactive cells, which will be zeroed-out later)
     #
+    # while we're at it, we also stop gradients to losses_to_go (we are only
+    # interested in gradients to log_p_action for the reinforcement learning
+    # part)
+    #
     # losses: (t, n)
     losses = (
-        log_p_action * losses_to_go + entropy_regularizer * neg_entropy
+        log_p_action * jax.lax.stop_gradient(losses_to_go)
+        + entropy_regularizer * neg_entropy
     )
 
     return losses
