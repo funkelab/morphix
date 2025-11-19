@@ -47,11 +47,20 @@ class LineageLoss(Loss):
         sigma:
 
             The variance of the Gaussians used in the mixture to fit positions.
+
+        cell_count_penalty:
+
+            The penalty to add to the loss for each unaccounted cell (in either
+            target or simulation). Should be higher than the loss for a cell
+            that is in the wrong location (max value ~3.2) such that a wrong
+            number of active cells is penalized more than the correct number in
+            the wrong locations.
     """
 
-    def __init__(self, target, sigma=1.0):
+    def __init__(self, target, sigma=1.0, cell_count_penalty=10.0):
         self.target = target
         self.sigma = sigma
+        self.cell_count_penalty = cell_count_penalty
 
     def compute(self, trajectory: Cell) -> tuple[jax.Array, jax.Array]:
         # map over time steps
@@ -125,5 +134,10 @@ class LineageLoss(Loss):
         # average error over active target positions
         # timestep_loss: (,)
         timestep_loss = error.sum() / target.active.sum()
+
+        # add a cell count difference penalty
+        timestep_loss += (
+            jnp.abs(target.active.sum() - cells.active.sum()) * self.cell_count_penalty
+        )
 
         return timestep_loss
