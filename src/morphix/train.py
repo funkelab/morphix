@@ -160,6 +160,7 @@ def simulation_loss(
         loss_function,
         model.rl_discount_gamma,
         model.entropy_regularizer,
+        model.direct_loss_weight,
     )
 
     return loss, batch_log
@@ -170,6 +171,7 @@ def trajectory_loss(
     loss_function,
     rl_discount_gamma,
     entropy_regularizer,
+    direct_loss_weight,
 ) -> tuple[jax.Array, BatchLog]:
     """Compute the loss for an entire trajectory."""
     # compute user-provided losses
@@ -184,7 +186,7 @@ def trajectory_loss(
     )
 
     # and add those to the raw losses
-    losses = raw_losses + rl_losses
+    losses = direct_loss_weight * raw_losses + rl_losses
 
     # zero-out losses of inactive cells
     active = trajectory.active

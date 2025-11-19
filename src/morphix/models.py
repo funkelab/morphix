@@ -18,6 +18,7 @@ def create_model(
     morse_well_depth=1.0,
     rl_discount_gamma=0.9,
     entropy_regularizer=0.0,
+    direct_loss_weight=0.1,
 ):
     key1, key2, key3, key4, key5, key6, key7 = jax.random.split(key, 7)
 
@@ -74,6 +75,7 @@ def create_model(
         sensation_model=sensation_model,
         rl_discount_gamma=rl_discount_gamma,
         entropy_regularizer=entropy_regularizer,
+        direct_loss_weight=direct_loss_weight,
         key=key7,
     )
     return model
@@ -379,6 +381,7 @@ class Model(eqx.Module):
     # learning parameters
     rl_discount_gamma: float
     entropy_regularizer: float
+    direct_loss_weight: float
 
     def __init__(
         self,
@@ -396,6 +399,7 @@ class Model(eqx.Module):
         sensation_model,
         rl_discount_gamma,
         entropy_regularizer,
+        direct_loss_weight,
         key,
     ):
         # simulation parameters
@@ -420,6 +424,7 @@ class Model(eqx.Module):
         # learning parameters
         self.rl_discount_gamma = float(rl_discount_gamma)
         self.entropy_regularizer = float(entropy_regularizer)
+        self.direct_loss_weight = float(direct_loss_weight)
 
     def initialize_cells(self, key, extended_attributes=False):
         empty = jnp.zeros((), dtype=jnp.float32)
@@ -486,4 +491,5 @@ class Model(eqx.Module):
             "delta_t": self.delta_t,
             "rl_discount_gamma": self.rl_discount_gamma,
             "entropy_regularizer": self.entropy_regularizer,
+            "direct_loss_weight": self.direct_loss_weight,
         }
