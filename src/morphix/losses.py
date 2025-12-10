@@ -59,68 +59,110 @@ class LineageLoss(Loss):
 
     def __init__(self, target, sigma=1.0, cell_count_penalty=10.0):
         self.target = target
+        self.num_timesteps = target.position.shape[0]
+        # indices to create "prev" targets and trajectories
+        self.prev_indices = jnp.array([0, *range(0, self.num_timesteps - 1)])
+        self.prev_target = target.replace(
+            position=target.position[self.prev_indices],
+            parent=target.parent[self.prev_indices],
+        )
         self.sigma = sigma
         self.cell_count_penalty = cell_count_penalty
 
     def compute(self, trajectory: Cell) -> tuple[jax.Array, jax.Array]:
-        # map over time steps
-        #
-        # losses: (t,)
-        losses = jax.vmap(self.timestep_loss)(trajectory, self.target)
+        # map over pairs of time steps
+
+        # create "prev" cells by repeating first time step and dropping last
+        prev_trajectory = jax.tree.map(lambda a: a[self.prev_indices], trajectory)
+        # losses: (t-1,)
+        losses = jax.vmap(self.timestep_loss)(
+            prev_trajectory,
+            trajectory,
+            self.prev_target,
+            self.target,
+        )
 
         # ensure that losses are broadcastable over cells
         #
         # losses: (t, 1)
         return losses[:, None]
 
-    def timestep_loss(self, cells, target):
-        # compute keypoints around each cell and each target location
+    def timestep_loss(self, prev_cells, cells, prev_target, target):
+        # get positions of cells and targets in previous time step
+        prev_cell_position = prev_cells.position[cells.parent]
+        prev_target_position = prev_target.position[target.parent]
+
+        # create movement vectors (from -> to, concatenated) for cells and targets
+        # cell_movements: (n, 2d)
+        # target_movements: (n, 2d)
+        cell_movements = jnp.concatenate(
+            (cells.position, prev_cell_position),
+            axis=-1,
+        )
+        target_movements = jnp.concatenate(
+            (target.position, prev_target_position),
+            axis=-1,
+        )
+
+        # compute keypoints around each cell and each target movement
         #
-        # key points are the center of the cell, plus one more key point in
-        # each direction (positive and negative)
+        # key points are the movement, plus one more key point in each
+        # direction (positive and negative)
         #
-        # key_points: (2k, d)   k = n + 2d
+        # key_points: (2k, 2d)   k = n + 4d
         offset = jnp.sqrt(self.sigma)
         key_points = jnp.concatenate(
             [
-                target.position,
-                target.position + jnp.array((offset, 0, 0)),
-                target.position + jnp.array((0, offset, 0)),
-                target.position + jnp.array((0, 0, offset)),
-                target.position - jnp.array((offset, 0, 0)),
-                target.position - jnp.array((0, offset, 0)),
-                target.position - jnp.array((0, 0, offset)),
-                cells.position,
-                cells.position + jnp.array((offset, 0, 0)),
-                cells.position + jnp.array((0, offset, 0)),
-                cells.position + jnp.array((0, 0, offset)),
-                cells.position - jnp.array((offset, 0, 0)),
-                cells.position - jnp.array((0, offset, 0)),
-                cells.position - jnp.array((0, 0, offset)),
+                target_movements,
+                target_movements + jnp.array((offset, 0, 0, 0, 0, 0)),
+                target_movements + jnp.array((0, offset, 0, 0, 0, 0)),
+                target_movements + jnp.array((0, 0, offset, 0, 0, 0)),
+                target_movements + jnp.array((0, 0, 0, offset, 0, 0)),
+                target_movements + jnp.array((0, 0, 0, 0, offset, 0)),
+                target_movements + jnp.array((0, 0, 0, 0, 0, offset)),
+                target_movements - jnp.array((offset, 0, 0, 0, 0, 0)),
+                target_movements - jnp.array((0, offset, 0, 0, 0, 0)),
+                target_movements - jnp.array((0, 0, offset, 0, 0, 0)),
+                target_movements - jnp.array((0, 0, 0, offset, 0, 0)),
+                target_movements - jnp.array((0, 0, 0, 0, offset, 0)),
+                target_movements - jnp.array((0, 0, 0, 0, 0, offset)),
+                cell_movements,
+                cell_movements + jnp.array((offset, 0, 0, 0, 0, 0)),
+                cell_movements + jnp.array((0, offset, 0, 0, 0, 0)),
+                cell_movements + jnp.array((0, 0, offset, 0, 0, 0)),
+                cell_movements + jnp.array((0, 0, 0, offset, 0, 0)),
+                cell_movements + jnp.array((0, 0, 0, 0, offset, 0)),
+                cell_movements + jnp.array((0, 0, 0, 0, 0, offset)),
+                cell_movements - jnp.array((offset, 0, 0, 0, 0, 0)),
+                cell_movements - jnp.array((0, offset, 0, 0, 0, 0)),
+                cell_movements - jnp.array((0, 0, offset, 0, 0, 0)),
+                cell_movements - jnp.array((0, 0, 0, offset, 0, 0)),
+                cell_movements - jnp.array((0, 0, 0, 0, offset, 0)),
+                cell_movements - jnp.array((0, 0, 0, 0, 0, offset)),
             ]
         )
 
         def score(x):
             """Compute the MoG score for a given point `x`."""
-            # x         : (d,)
-            # key_points: (k, d)
+            # x         : (2d,)
+            # key_points: (k, 2d)
             # dist      : (k,)
             dist = jnp.sum((key_points - x) ** 2 / self.sigma, axis=-1)
             # (k,)
             return jnp.exp(-dist)
 
-        # compute key point scores for each target position
+        # compute key point scores for each target movement
         # (n, k)
-        target_scores = jax.vmap(score)(target.position)
+        target_scores = jax.vmap(score)(target_movements)
         # ignore scores from inactive cells
         target_scores *= target.active[:, None]
         # sum over target positions
         # (k,)
         target_scores = target_scores.sum(axis=0)
 
-        # compute key point scores for each predicted position
+        # compute key point scores for each predicted movement
         # (n, k)
-        trajectory_scores = jax.vmap(score)(cells.position)
+        trajectory_scores = jax.vmap(score)(cell_movements)
         # ignore scores from inactive cells
         trajectory_scores *= cells.active[:, None]
         # sum over predicted positions
