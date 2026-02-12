@@ -1,5 +1,10 @@
+from datetime import datetime
+
+import ffmpegio
 import numpy as np
 import pygfx as gfx
+import pylinalg as la  # pylinalg is a pygfx dependency
+from PIL import Image
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import (
     QHBoxLayout,
@@ -13,10 +18,6 @@ from rendercanvas.auto import RenderCanvas
 
 from ..cell import Cell
 from .scene import Scene
-
-import numpy as np
-import pygfx as gfx
-import pylinalg as la  # pylinalg is a pygfx dependency
 
 
 class LineageViewer(QWidget):
@@ -123,6 +124,10 @@ class LineageViewer(QWidget):
             self.advance_frame(1)
         elif event["key"] == "b":
             self.toggle_bg()
+        elif event["key"] == "p":
+            self.take_screenshot()
+        elif event["key"] == "v":
+            self.create_video()
         elif event["key"] == "Escape":
             self.set_highlight()
 
@@ -182,6 +187,22 @@ class LineageViewer(QWidget):
         self.scene.toggle_bg()
         self.canvas.update()
 
+    def take_screenshot(self, filename="screenshot.png"):
+        image = Image.fromarray(self.renderer.snapshot())
+        image.save(f"screenshot_{self.timestamp()}.png")
+
+    def create_video(self):
+        frames = []
+        for t in range(self.n_timesteps):
+            self.slider.setValue(t)
+            self.renderer.render(self.scene, self.camera)
+            frame = Image.fromarray(self.renderer.snapshot())
+            frames.append(frame)
+
+        ffmpegio.video.write(
+            f"screencast_{self.timestamp()}.mp4", 1.0, np.array(frames)
+        )
+
     def on_slider_changed(self, t):
         t = int(t)
         if t == self.current_t:
@@ -216,3 +237,6 @@ class LineageViewer(QWidget):
         world_h = inv_transform @ np.array([ndc_x, ndc_y, ndc_z, 1.0], dtype=np.float32)
         world = world_h[:3] / world_h[3]
         return world
+
+    def timestamp(self):
+        return datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
