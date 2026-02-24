@@ -1,6 +1,5 @@
 from datetime import datetime
 
-import ffmpegio
 import numpy as np
 import pygfx as gfx
 import pylinalg as la  # pylinalg is a pygfx dependency
@@ -15,6 +14,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 from rendercanvas.auto import RenderCanvas
+from tqdm import tqdm
 
 from ..cell import Cell
 from .scene import Scene
@@ -44,15 +44,18 @@ class LineageViewer(QWidget):
 
     def __init__(
         self,
-        lineage: Cell,
+        lineages: Cell | list[Cell],
         delta_t: float,
         inactive_cell_opacity: float = 0.0,
         parent=None,
     ):
         super().__init__(parent)
-        self.lineage = lineage
-        self.n_timesteps = lineage.position.shape[0]
+        if isinstance(lineages, Cell):
+            lineages = [lineages]
+        self.lineages = lineages
+        self.n_timesteps = lineages[0].position.shape[0]
         self.current_t = 0
+        self.current_lineage = 0
         self.playing = False
         self.dark_bg = True
 
@@ -68,18 +71,29 @@ class LineageViewer(QWidget):
         self.play_button.clicked.connect(self.toggle_play)
 
         self.t_label = QLabel(f"t = 0 / {self.n_timesteps - 1}")
+        self.t_slider = QSlider(Qt.Horizontal)
+        self.t_slider.setMinimum(0)
+        self.t_slider.setMaximum(max(0, self.n_timesteps - 1))
+        self.t_slider.setValue(0)
+        self.t_slider.setSingleStep(1)
+        self.t_slider.valueChanged.connect(self.on_t_slider_changed)
 
-        self.slider = QSlider(Qt.Horizontal)
-        self.slider.setMinimum(0)
-        self.slider.setMaximum(max(0, self.n_timesteps - 1))
-        self.slider.setValue(0)
-        self.slider.setSingleStep(1)
-        self.slider.valueChanged.connect(self.on_slider_changed)
+        self.lineage_label = QLabel("lineage 0")
+        self.lineage_slider = QSlider(Qt.Horizontal)
+        self.lineage_slider.setMinimum(0)
+        self.lineage_slider.setMaximum(len(self.lineages))
+        self.lineage_slider.setValue(0)
+        self.lineage_slider.setSingleStep(1)
+        self.lineage_slider.valueChanged.connect(self.on_lineage_slider_changed)
 
         controls = QHBoxLayout()
         controls.addWidget(self.play_button)
         controls.addWidget(self.t_label)
-        controls.addWidget(self.slider, stretch=1)
+        controls.addWidget(self.t_slider, stretch=1)
+        layout.addLayout(controls)
+        controls = QHBoxLayout()
+        controls.addWidget(self.lineage_label)
+        controls.addWidget(self.lineage_slider, stretch=1)
         layout.addLayout(controls)
 
         self.timer = QTimer()
@@ -92,10 +106,19 @@ class LineageViewer(QWidget):
         self.camera.look_at((0, 0, 0))
         self.set_controller("fly")
 
-        self.scene = Scene(
-            lineage, delta_t=delta_t, inactive_cell_opacity=inactive_cell_opacity
+        self.scenes = [
+            Scene(
+                lineage,
+                delta_t=delta_t,
+                inactive_cell_opacity=inactive_cell_opacity,
+                grid_y=-5.0,
+            )
+            for lineage in self.lineages
+        ]
+        self.active_scene = self.scenes[0]
+        self.canvas.request_draw(
+            lambda: self.renderer.render(self.active_scene, self.camera)
         )
-        self.canvas.request_draw(lambda: self.renderer.render(self.scene, self.camera))
 
     def set_controller(self, mode: str):
         if mode == "fly":
@@ -122,12 +145,18 @@ class LineageViewer(QWidget):
             self.advance_frame(-1)
         elif event["key"] == "e":
             self.advance_frame(1)
+        elif event["key"] == "Q":
+            self.advance_lineage(-1)
+        elif event["key"] == "E":
+            self.advance_lineage(1)
         elif event["key"] == "b":
             self.toggle_bg()
         elif event["key"] == "p":
             self.take_screenshot()
         elif event["key"] == "v":
             self.create_video()
+        elif event["key"] == "c":
+            self.reset_camera()
         elif event["key"] == "Escape":
             self.set_highlight()
 
@@ -145,7 +174,7 @@ class LineageViewer(QWidget):
 
     def reset_camera(self, margin=1.2):
         """Position the camera such that all objects are visible."""
-        bb_min, bb_max = self.scene.bounding_box
+        bb_min, bb_max = self.active_scene.bounding_box
         center = (bb_min + bb_max) / 2.0
         extent = bb_max - bb_min
         radius = np.linalg.norm(extent) / 2.0 * margin
@@ -173,18 +202,22 @@ class LineageViewer(QWidget):
 
     def advance_frame(self, delta=1):
         t = (self.current_t + delta) % self.n_timesteps
-        self.slider.setValue(t)
+        self.t_slider.setValue(t)
+
+    def advance_lineage(self, delta=1):
+        lineage = (self.current_lineage + delta) % len(self.lineages)
+        self.lineage_slider.setValue(lineage)
 
     def set_highlight(self, index=None):
-        self.scene.set_highlight(index)
+        self.active_scene.set_highlight(index)
         self.canvas.update()
 
     def set_hover(self, origin, direction):
-        self.scene.set_hover(origin, direction)
+        self.active_scene.set_hover(origin, direction)
         self.canvas.update()
 
     def toggle_bg(self):
-        self.scene.toggle_bg()
+        self.active_scene.toggle_bg()
         self.canvas.update()
 
     def take_screenshot(self, filename="screenshot.png"):
@@ -193,23 +226,40 @@ class LineageViewer(QWidget):
 
     def create_video(self):
         frames = []
-        for t in range(self.n_timesteps):
-            self.slider.setValue(t)
-            self.renderer.render(self.scene, self.camera)
-            frame = Image.fromarray(self.renderer.snapshot())
-            frames.append(frame)
+        filename = f"frames_{self.timestamp()}"
 
-        ffmpegio.video.write(
-            f"screencast_{self.timestamp()}.mp4", 1.0, np.array(frames)
-        )
+        print("capturing frames...")
+        for lineage in tqdm(range(len(self.lineages))):
+            self.lineage_slider.setValue(lineage)
+            for t in tqdm(range(self.n_timesteps), leave=False):
+                self.t_slider.setValue(t)
+                self.renderer.render(self.active_scene, self.camera)
+                frame = Image.fromarray(self.renderer.snapshot())
+                frames.append(frame)
 
-    def on_slider_changed(self, t):
+        print(f"saving frames to {filename}...")
+        np.save(filename, np.array(frames))
+        print("...done.")
+
+    def on_t_slider_changed(self, t):
         t = int(t)
         if t == self.current_t:
             return
         self.current_t = t
         self.t_label.setText(f"t = {self.current_t} / {self.n_timesteps - 1}")
-        self.scene.set_timestep(self.current_t)
+        self.active_scene.set_timestep(self.current_t)
+        self.canvas.update()
+
+    def on_lineage_slider_changed(self, lineage):
+        lineage = int(lineage)
+        if lineage == self.current_lineage:
+            return
+        if lineage >= len(self.lineages):
+            return
+        self.current_lineage = lineage
+        self.lineage_label.setText(f"lineage {self.current_lineage}")
+        self.active_scene = self.scenes[self.current_lineage]
+        self.active_scene.set_timestep(self.current_t)
         self.canvas.update()
 
     def get_mouse_ray(self, x, y):
