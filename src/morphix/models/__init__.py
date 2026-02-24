@@ -24,6 +24,7 @@ def create_model(
     rl_discount_gamma=0.9,
     entropy_regularizer=0.0,
     direct_loss_weight=0.1,
+    initial_cell_positions=None,
 ):
     key1, key2, key3, key4, key5, key6, key7 = jax.random.split(key, 7)
 
@@ -82,5 +83,6 @@ def create_model(
         entropy_regularizer=entropy_regularizer,
         direct_loss_weight=direct_loss_weight,
         key=key7,
+        initial_cell_positions=initial_cell_positions,
     )
     return model

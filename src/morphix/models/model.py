@@ -19,7 +19,9 @@ class Model(eqx.Module):
     cell_state_dims: int
     num_molecules: int
     delta_t: float
+    num_initial_cells: int
     initial_cell_states: jax.Array
+    initial_cell_positions: jax.Array
     # models
     react_model: ReactModel
     motility_model: MotilityModel
@@ -53,16 +55,18 @@ class Model(eqx.Module):
         direct_loss_weight,
         key,
     ):
-        # simulation parameters
+        # hyperparameters
+
         self.max_num_cells = max_num_cells
         self.cell_state_dims = cell_state_dims
         self.num_molecules = num_molecules
         self.delta_t = float(delta_t)
-        self.initial_cell_states = jax.random.uniform(
-            key=key, shape=(max_num_cells, cell_state_dims)
-        )
+        self.rl_discount_gamma = float(rl_discount_gamma)
+        self.entropy_regularizer = float(entropy_regularizer)
+        self.direct_loss_weight = float(direct_loss_weight)
 
-        # models
+        # sub-models
+
         self.react_model = react_model
         self.motility_model = motility_model
         self.split_prob_model = split_prob_model
@@ -72,10 +76,22 @@ class Model(eqx.Module):
         self.diffusion_model = diffusion_model
         self.sensation_model = sensation_model
 
-        # learning parameters
-        self.rl_discount_gamma = float(rl_discount_gamma)
-        self.entropy_regularizer = float(entropy_regularizer)
-        self.direct_loss_weight = float(direct_loss_weight)
+        # initial state
+
+        self.num_initial_cells = (
+            1 if initial_cell_positions is None else initial_cell_positions.shape[0]
+        )
+        self.initial_cell_states = jax.random.uniform(
+            key=key, shape=(max_num_cells, cell_state_dims)
+        )
+        self.initial_cell_positions = jnp.zeros(
+            (self.max_num_cells, self.motility_model.spatial_dims),
+            dtype=jnp.float32,
+        )
+        if initial_cell_positions is not None:
+            self.initial_cell_positions = self.initial_cell_positions.at[
+                : self.num_initial_cells
+            ].set(initial_cell_positions)
 
     def initialize_cells(self, key, extended_attributes=False):
         empty = jnp.zeros((), dtype=jnp.float32)
@@ -92,10 +108,7 @@ class Model(eqx.Module):
             extended_attrs = {}
 
         cells = Cell(
-            position=jnp.zeros(
-                (self.max_num_cells, self.motility_model.spatial_dims),
-                dtype=jnp.float32,
-            ),
+            position=self.initial_cell_positions,
             radius=jnp.ones((self.max_num_cells,), dtype=jnp.float32),
             state=self.initial_cell_states,
             secretion=jnp.zeros(
@@ -104,8 +117,11 @@ class Model(eqx.Module):
             concentration=jnp.zeros(
                 (self.max_num_cells, self.num_molecules), dtype=jnp.float32
             ),
-            # initially, only one cell is active
-            parent=(-jnp.ones((self.max_num_cells,), dtype=jnp.int16)).at[0].set(0),
+            parent=(
+                (-jnp.ones((self.max_num_cells,), dtype=jnp.int16))
+                .at[: self.num_initial_cells]
+                .set(0)
+            ),
             # filled in below
             p_split=empty,
             # filled in below
