@@ -14,6 +14,88 @@ from .split_prob import SplitProbModel
 
 
 class Model(eqx.Module):
+    """The main morphix model.
+
+    Args:
+        max_num_cells:
+
+            The maximum number of simulated cells. Once this number is reached,
+            cells will no longer divide.
+
+        cell_state_dims:
+
+            The size of the cell state vector.
+
+        num_molecules:
+
+            The number of (types of) molecules that can be diffused by a cell.
+
+        delta_t:
+
+            Time between simulation steps. Affects the mechanical simulation.
+
+        react_model:
+
+            A model that maps a cell state in one timestep to the state in the
+            next timestep.
+
+        motility_model:
+
+            A model that predicts how cells move from their cell state.
+
+        split_prob_model:
+
+            A model that predicts the probability of a split (or cell division).
+
+        split_model:
+
+            A model that predicts how to split a cell (cell states, radii, and
+            division plane).
+
+        mechanics_model:
+
+            The mechanical model for cell-cell interactions.
+
+        secretion_model:
+
+            A model that predicts which molecules to secret (and at which
+            concentration) given a cell state.
+
+        diffusion_model:
+
+            A model to compute how molecules diffuse in space.
+
+        sensation_model:
+
+            A model that incorporates molecule concentrations into the cell state.
+
+        rl_discount_gamma:
+
+            Reinforcement learning hyperparameter to control the rate of
+            discounting future rewards.
+
+        entropy_regularizer:
+
+            The weight of a regularizer that aims to keep the entropy of split
+            probabilities high. Increase this value to encourage exploration in
+            early training iterations.
+
+        direct_loss_weight:
+
+            The weight of the "direct loss", i.e., the position loss without
+            the reinforcement learning objective.
+
+        key:
+
+            A JAX random key for initialization.
+
+        initial_cell_positions:
+
+            An optional array of shape `(n, d)` of the initial positions of `n`
+            cells. If not given, the model will start with a single cell at
+            position `[0.0, 0.0, 0.0]`.
+    """
+
     # simulation parameters
     max_num_cells: int
     cell_state_dims: int
@@ -38,22 +120,23 @@ class Model(eqx.Module):
 
     def __init__(
         self,
-        max_num_cells,
-        cell_state_dims,
-        num_molecules,
-        delta_t,
-        react_model,
-        motility_model,
-        split_prob_model,
-        split_model,
-        mechanics_model,
-        secretion_model,
-        diffusion_model,
-        sensation_model,
-        rl_discount_gamma,
-        entropy_regularizer,
-        direct_loss_weight,
-        key,
+        max_num_cells: int,
+        cell_state_dims: int,
+        num_molecules: int,
+        delta_t: float,
+        react_model: ReactModel,
+        motility_model: MotilityModel,
+        split_prob_model: SplitProbModel,
+        split_model: SplitModel,
+        mechanics_model: MechanicsModel,
+        secretion_model: SecretionModel,
+        diffusion_model: DiffusionModel,
+        sensation_model: SensationModel,
+        rl_discount_gamma: float,
+        entropy_regularizer: float,
+        direct_loss_weight: float,
+        key: jax.Array,
+        initial_cell_positions: jax.Array | None = None,
     ):
         # hyperparameters
 
