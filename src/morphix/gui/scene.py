@@ -3,7 +3,7 @@ import pygfx as gfx
 import spatial_graph as sg
 
 from ..cell import Cell
-from .colors import states_to_rgb
+from .colors import random_colors, states_to_rgb
 
 
 class Scene(gfx.Scene):
@@ -25,24 +25,30 @@ class Scene(gfx.Scene):
     """
 
     def __init__(
-        self, lineage: Cell, delta_t: float = 1.0, inactive_cell_opacity: float = 0.0
+        self,
+        lineage: Cell,
+        delta_t: float = 1.0,
+        inactive_cell_opacity: float = 0.0,
+        grid_y: float | None = None,
     ):
         super().__init__()
 
         self.lineage = lineage
         self.num_timesteps = lineage.parent.shape[0]
         self.max_num_cells = lineage.parent.shape[1]
+        self.num_molecules = lineage.secretion.shape[2]
 
         self.graph = self._create_lineage_graph(lineage)
         self.inactive_cell_opacity = inactive_cell_opacity
         self.delta_t = delta_t
         self.bb_min, self.bb_max = self._compute_bounding_box()
 
-        self.colors = states_to_rgb(np.array(lineage.state), mode="direct")
+        self.colors = states_to_rgb(np.array(lineage.state), mode="umap")
         self.bg_dark = (0, 0, 0)
         self.bg_light = (1, 1, 1)
         self.highlight_color = (1, 0.3, 0.8)
         self.hover_color = (0.8, 0.7, 0.8)
+        self.molecule_colors = random_colors(self.num_molecules)
 
         ######################
         # add scene elements #
@@ -70,6 +76,7 @@ class Scene(gfx.Scene):
 
         self.objects = gfx.Scene()
         self.cached_cells = {}
+        self.cached_secretions = {}
         self.cached_highlights = {}
         self.hovers = None
 
@@ -85,7 +92,7 @@ class Scene(gfx.Scene):
             height_segments=20,
         )
 
-        self.grid.local.y = self.bb_min[1] - 1.0
+        self.grid.local.y = grid_y if grid_y is not None else self.bb_min[1] - 1.0
         self.highlight = None
         self.hover_nodes = []
         self.hover_distances = []
@@ -153,6 +160,7 @@ class Scene(gfx.Scene):
         self.objects.add(*self._get_cells())
         self.objects.add(*self._get_highlights())
         self.objects.add(*self._get_hovers())
+        self.objects.add(*self._get_secretions())
 
     def _compute_bounding_box(self):
         active = self.lineage.active
@@ -330,3 +338,38 @@ class Scene(gfx.Scene):
         self.hovers.geometry.sizes.set_data(2 * radii[0:num_visible_hovers])
 
         return [self.hovers]
+
+    def _get_secretions(self):
+        t = self.t
+        if t in self.cached_secretions:
+            return self.cached_secretions[t]
+
+        position = self.lineage.position[t]
+        secretion = self.lineage.secretion[t]
+        active = self.lineage.active[t]
+        num_cells = position.shape[0]
+
+        all_blobs = []
+
+        # draw blobs for each cell
+        for i in range(num_cells):
+            if not active[i]:
+                continue
+            material = gfx.materials.PointsGaussianBlobMaterial(
+                size_mode="vertex",
+                size_space="world",
+                color_mode="vertex",
+                opacity=0.9,
+                alpha_mode="blend",
+                depth_write=False,
+            )
+            geometry = gfx.geometries.Geometry(
+                colors=self.molecule_colors,
+                positions=np.array([position[i]] * self.num_molecules),
+                sizes=np.array(secretion[i]),
+            )
+            blobs = gfx.objects.Points(geometry, material)
+            all_blobs.append(blobs)
+
+        self.cached_secretions[t] = all_blobs
+        return all_blobs
