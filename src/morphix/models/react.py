@@ -1,6 +1,8 @@
 import equinox as eqx
 import jax
 
+from morphix.models.swiglu import SwiGLU
+
 from ..cell import Cell
 
 
@@ -8,13 +10,7 @@ class ReactModel(eqx.Module):
     layers: tuple
 
     def __init__(self, cell_state_dims: int, hidden_dims: int, key):
-        key1, key2 = jax.random.split(key, 2)
-        self.layers = (
-            eqx.nn.Linear(cell_state_dims, hidden_dims, key=key1),
-            eqx.nn.LayerNorm(hidden_dims),
-            jax.nn.relu,
-            eqx.nn.Linear(hidden_dims, cell_state_dims, key=key2),
-        )
+        self.layers = (SwiGLU(cell_state_dims, hidden_dims, key=key),)
 
     def __call__(self, cells: Cell, extended_attributes: bool = False):
         state = jax.vmap(self.update_state)(cells.state)

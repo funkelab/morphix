@@ -2,6 +2,8 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 
+from .swiglu import SwiGLU
+
 
 class SplitModel(eqx.Module):
     layers: tuple
@@ -51,12 +53,13 @@ class SplitModel(eqx.Module):
                 divisions, a value of 1.0 does not restrict the size difference
                 at all.
         """
-        key1, key2 = jax.random.split(key, 2)
         self.layers = (
-            eqx.nn.Linear(cell_state_dims, hidden_dims, key=key1),
-            eqx.nn.LayerNorm(hidden_dims),
-            jax.nn.relu,
-            eqx.nn.Linear(hidden_dims, cell_state_dims + 1 + spatial_dims, key=key2),
+            SwiGLU(
+                cell_state_dims,
+                hidden_dims,
+                out_features=cell_state_dims + 1 + spatial_dims,
+                key=key,
+            ),
         )
         self.cell_state_dims = cell_state_dims
         self.spatial_dims = spatial_dims

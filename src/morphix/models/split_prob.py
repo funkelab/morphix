@@ -2,6 +2,7 @@ import equinox as eqx
 import jax
 
 from ..cell import Cell
+from .swiglu import SwiGLU
 
 
 class SplitProbModel(eqx.Module):
@@ -35,13 +36,14 @@ class SplitProbModel(eqx.Module):
                 The probability to act randomly (split prob will be 0.5), to be
                 used to incentivise exploration during learning.
         """
-        key1, key2 = jax.random.split(key, 2)
         self.eps = float(eps)
         self.layers = (
-            eqx.nn.Linear(cell_state_dims, hidden_dims, key=key1),
-            eqx.nn.LayerNorm(hidden_dims),
-            jax.nn.relu,
-            eqx.nn.Linear(hidden_dims, 1, key=key2),
+            SwiGLU(
+                cell_state_dims,
+                hidden_dims,
+                out_features=1,
+                key=key,
+            ),
             jax.nn.sigmoid,
         )
 
