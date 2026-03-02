@@ -20,7 +20,8 @@ reinforcement learning.
 In the future, this will allow learning the development rules that give rise to
 different morphologies.
 
-https://github.com/user-attachments/assets/1c85075b-3f68-4053-b48d-fc3e6f5300ac
+
+https://github.com/user-attachments/assets/0f7b1f1e-4527-42ef-9bd6-482085ba2955
 
 ### Note
 
